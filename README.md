@@ -284,37 +284,6 @@ journalctl -u email-summary -f
 - **不要**将配置页 `8765` 端口对公网开放；远程改配置请用 SSH 隧道：`ssh -L 8765:127.0.0.1:8765 user@服务器IP`
 - 确保 VPS 能访问：`imap.gmail.com:993`、`api.deepseek.com`、飞书/企微 API
 
----
-
-## 上传到 GitHub
-
-### 上传前检查
-
-- [ ] 已确认 **`.env` 未提交**（仓库 `.gitignore` 已忽略）
-- [ ] 已确认 **`data/`**（含 token、数据库）未提交
-- [ ] 已确认 **`.venv/`** 未提交
-- [ ] 若曾把 Key 发到聊天/截图，建议在平台 **轮换 API Key**
-
-```bash
-cd email-summary
-git init
-git add .
-git status   # 确认没有 .env、data/、.venv/
-git commit -m "Initial commit: email summary agent"
-git branch -M main
-git remote add origin https://github.com/你的用户名/email-summary.git
-git push -u origin main
-```
-
-### 其他人如何使用你的仓库
-
-```bash
-git clone https://github.com/你的用户名/email-summary.git
-cd email-summary
-cp .env.example .env
-# 按本文填写 DeepSeek、Gmail、Webhook
-./run.sh
-```
 
 ---
 
