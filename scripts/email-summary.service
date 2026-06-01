@@ -1,0 +1,16 @@
+[Unit]
+Description=Email Summary Agent (DeepSeek + Feishu)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/email-summary
+ExecStart=/opt/email-summary/.venv/bin/python -m src.main
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

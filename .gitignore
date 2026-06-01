@@ -1,0 +1,22 @@
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+data/
+*.db
+.DS_Store
+*.log
+
+# OAuth / 本地状态（勿提交）
+data/outlook_msal_cache.json
+data/app_state.json
+data/prompts.json
+
+# macOS
+.AppleDouble
+.LSOverride

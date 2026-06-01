@@ -1,0 +1,8 @@
+openai>=1.40.0
+imapclient>=3.0.1
+python-dotenv>=1.0.1
+beautifulsoup4>=4.12.3
+html2text>=2024.2.26
+requests>=2.32.3
+msal>=1.28.0
+flask>=3.0.0
