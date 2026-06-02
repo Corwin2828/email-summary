@@ -258,34 +258,97 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 
 ---
 
-## 部署到香港 VPS（24 小时运行）
+## 部署到云服务器（推荐新加坡节点）
 
 程序资源占用低，**1 核 1GB** 即可。
 
 | 推荐 | 说明 |
 |------|------|
-| 腾讯云 / 阿里云 **香港轻量** 2核2G | 国内支付方便，性能够用 |
-| Vultr 香港 | 按量月付 |
+| 腾讯云 / 阿里云 **新加坡轻量** 2核2G | 成本通常低于香港，适合本项目 |
+| 腾讯云 / 阿里云 香港轻量 2核2G | 线路更近大陆，但价格偏高 |
+| Vultr 新加坡 / 香港 | 按量月付 |
 
 ```bash
 # 服务器上（Ubuntu 22.04+）
-apt update && apt install -y python3 python3-venv git
-cd /opt && git clone https://github.com/你的用户名/email-summary.git
-cd email-summary
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git python3 python3-venv python3-pip
+
+cd /opt
+sudo git clone https://github.com/你的用户名/email-summary.git
+sudo chown -R $USER:$USER /opt/email-summary
+cd /opt/email-summary
+
 cp .env.example .env && nano .env   # 填入密钥，勿泄露
+chmod 600 .env
 
 chmod +x run.sh
-./run.sh   # 试跑成功后 Ctrl+C
+./run.sh   # 首次试跑成功后 Ctrl+C
 
-# 常驻（编辑 User 与路径）
-cp scripts/email-summary.service /etc/systemd/system/
-nano /etc/systemd/system/email-summary.service
-systemctl enable --now email-summary
-journalctl -u email-summary -f
+# 配置 systemd 常驻
+sudo cp scripts/email-summary.service /etc/systemd/system/email-summary.service
+sudo nano /etc/systemd/system/email-summary.service
+# 推荐修改为：
+# User=ubuntu
+# WorkingDirectory=/opt/email-summary
+# ExecStart=/opt/email-summary/.venv/bin/python -m src.main
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now email-summary
+sudo systemctl status email-summary
+sudo journalctl -u email-summary -f
 ```
 
-- **不要**将配置页 `8765` 端口对公网开放；远程改配置请用 SSH 隧道：`ssh -L 8765:127.0.0.1:8765 user@服务器IP`
+- **不要**将配置页 `8765` 端口直接对公网开放；远程改配置建议用 SSH 隧道：`ssh -L 8765:127.0.0.1:8765 user@服务器IP`
 - 确保 VPS 能访问：`imap.gmail.com:993`、`api.deepseek.com`、飞书/企微 API
+- 腾讯云安全组建议：
+  - 必开：`22/tcp`（SSH）
+  - 如使用方案B：再开 `80/tcp`（以及后续 `443/tcp`）
+  - 不建议直接开放 `8765/tcp`
+
+### 方案B：直接浏览器访问配置页（Nginx + 账号密码）
+
+如果你希望不用 SSH 隧道，直接在浏览器打开 `https://你的域名/settings`，推荐用 Nginx 反向代理 + 基础认证：
+
+1. 准备一个域名并解析到 VPS 公网 IP
+2. 安装 Nginx 与密码工具
+
+```bash
+sudo apt install -y nginx apache2-utils
+sudo htpasswd -c /etc/nginx/.htpasswd admin
+```
+
+3. 新建 Nginx 配置（将 `your.domain.com` 改为你的域名）
+
+```nginx
+server {
+    listen 80;
+    server_name your.domain.com;
+
+    location /settings/ {
+        proxy_pass http://127.0.0.1:8765/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        auth_basic "Email Summary Settings";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+    }
+}
+```
+
+4. 启用配置并重载 Nginx
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+5. 单独启动设置页服务（建议另建 systemd，避免手工运行）
+
+```bash
+cd /opt/email-summary
+./settings.sh
+```
+
+> 强烈建议继续加 HTTPS（Let's Encrypt）后再长期开放公网访问；否则账号密码会明文传输。
 
 
 ---
