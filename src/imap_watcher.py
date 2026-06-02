@@ -129,6 +129,9 @@ class ImapWatcher:
                 pass
             self._client = None
 
+    def close(self) -> None:
+        self._disconnect()
+
     def _uids_since(self, client: IMAPClient, since: datetime) -> list[int]:
         """按 INTERNALDATE 筛选 since 之后收到的邮件。"""
         since_utc = since.astimezone(timezone.utc)

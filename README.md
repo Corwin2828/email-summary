@@ -71,6 +71,18 @@ chmod +x run.sh settings.sh 启动邮件助手.command 打开设置.command
 
 浏览器访问 **http://127.0.0.1:8765/** ，保存后**重启** `./run.sh`。
 
+### 4. 手动触发一次轮询（不常驻）
+
+在服务器后台想“立即拉一轮邮件”时可执行：
+
+```bash
+cd /opt/email-summary
+source .venv/bin/activate
+python -m src.main --poll-once
+```
+
+这条命令会执行一轮与正式流程一致的拉取/过滤/推送，然后自动退出，不影响 `systemd` 常驻服务。
+
 ---
 
 ## 一、获取 DeepSeek API Key

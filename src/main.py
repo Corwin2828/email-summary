@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import atexit
 import logging
 import queue
@@ -63,7 +64,48 @@ def _make_imap_error_handler(config: AppConfig, account_label: str):
     return handler
 
 
+def _poll_once(config: AppConfig, pipeline: EmailPipeline) -> None:
+    """手动执行一轮轮询并退出（用于后台人工触发）。"""
+    total = 0
+
+    for account in config.accounts:
+        watcher = ImapWatcher(
+            account,
+            lambda _uid, _raw: None,
+            data_dir=config.data_dir,
+            process_existing_unread=config.process_existing_unread,
+            catchup_since_last_run=config.catchup_since_last_run,
+            use_idle=False,
+            overquota_wait_sec=config.imap_overquota_wait_sec,
+        )
+        try:
+            batch = watcher.fetch_pending()
+            if batch:
+                logger.info(
+                    "[手动轮询] %s 发现 %d 封待处理邮件",
+                    account.name,
+                    len(batch),
+                )
+            for uid, raw in batch:
+                pipeline.handle_raw(account.name, uid, raw)
+                total += 1
+        except Exception:
+            logger.exception("[手动轮询] %s 失败", account.name)
+        finally:
+            watcher.close()
+
+    logger.info("[手动轮询] 本轮结束，共处理 %d 封邮件", total)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument(
+        "--poll-once",
+        action="store_true",
+        help="执行一次轮询后退出（不常驻）",
+    )
+    args = parser.parse_args()
+
     try:
         config = load_config()
     except ValueError as e:
@@ -74,8 +116,6 @@ def main() -> None:
     store = ProcessedStore(config.data_dir / "processed.db")
     atexit.register(lambda: save_last_active_at(config.data_dir))
     pipeline = EmailPipeline(config, store)
-    mail_queue: queue.Queue[tuple[str, str, bytes] | None] = queue.Queue()
-    _start_mail_worker(pipeline, mail_queue)
 
     mode = "IDLE" if config.imap_use_idle else f"轮询每 {config.poll_interval_sec}s"
     logger.info("IMAP 模式: %s", mode)
@@ -106,6 +146,14 @@ def main() -> None:
                 account.azure_client_id,
                 account.token_cache_path,  # type: ignore[arg-type]
             )
+
+    if args.poll_once:
+        _poll_once(config, pipeline)
+        store.close()
+        return
+
+    mail_queue: queue.Queue[tuple[str, str, bytes] | None] = queue.Queue()
+    _start_mail_worker(pipeline, mail_queue)
 
     for account in config.accounts:
 
