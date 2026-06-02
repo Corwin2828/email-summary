@@ -26,10 +26,13 @@ ENV_KEYS = [
     "WECOM_WEBHOOK_URL",
     "IMAP_USE_IDLE",
     "POLL_INTERVAL_SEC",
+    "IMAP_OVERQUOTA_WAIT_SEC",
     "DATA_DIR",
     "MAX_BODY_CHARS",
     "FILTER_MODE",
     "NOTIFY_FORMAT",
+    "DAILY_DIGEST_ENABLED",
+    "DAILY_DIGEST_TIME",
     "PROCESS_EXISTING_UNREAD",
     "CATCHUP_SINCE_LAST_RUN",
     "WEB_HOST",
@@ -161,10 +164,15 @@ def validate_settings(payload: dict) -> list[str]:
         errors.append("请至少填写飞书或企业微信 Webhook")
 
     try:
-        poll = int(env.get("POLL_INTERVAL_SEC") or "60")
-        if poll < 15:
-            errors.append("轮询间隔不能小于 15 秒")
+        poll = int(env.get("POLL_INTERVAL_SEC") or "1800")
+        if poll < 900:
+            errors.append("轮询间隔建议不少于 900 秒（15 分钟）")
     except ValueError:
         errors.append("轮询间隔必须是数字")
+
+    if env.get("DAILY_DIGEST_ENABLED", "").lower() in ("1", "true", "yes"):
+        digest_time = (env.get("DAILY_DIGEST_TIME") or "").strip()
+        if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", digest_time):
+            errors.append("每日简报时间格式应为 HH:MM（例如 21:30）")
 
     return errors

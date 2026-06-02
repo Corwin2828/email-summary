@@ -193,8 +193,12 @@
           </div>
           <div class="grid">
             <label class="field">
-              <span>轮询间隔（秒）</span>
-              <input type="number" name="POLL_INTERVAL_SEC" min="15" step="5" />
+              <span>轮询间隔（秒，1800=30 分钟）</span>
+              <input type="number" name="POLL_INTERVAL_SEC" min="900" step="300" placeholder="1800" />
+            </label>
+            <label class="field">
+              <span>Gmail 限流等待（秒，10800=3 小时）</span>
+              <input type="number" name="IMAP_OVERQUOTA_WAIT_SEC" min="60" step="300" placeholder="10800" />
             </label>
             <label class="field">
               <span>邮件过滤模式</span>
@@ -210,8 +214,17 @@
                 <option value="template">本地模板拼装</option>
               </select>
             </label>
+            <label class="field">
+              <span>每日简报时间（HH:MM）</span>
+              <input type="text" name="DAILY_DIGEST_TIME" placeholder="21:30" />
+            </label>
           </div>
           <div class="toggle-group">
+            <label class="toggle">
+              <input type="checkbox" name="DAILY_DIGEST_ENABLED" />
+              <span class="toggle-track"></span>
+              <span class="toggle-label">启用每日简报（预留开关）</span>
+            </label>
             <label class="toggle">
               <input type="checkbox" name="CATCHUP_SINCE_LAST_RUN" />
               <span class="toggle-track"></span>

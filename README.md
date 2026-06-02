@@ -244,10 +244,13 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 |------|------|------|
 | `FILTER_MODE` | `ai` = DeepSeek 判断是否总结；`rules` = 本地规则 | `ai` |
 | `NOTIFY_FORMAT` | `ai` = DeepSeek 生成推送全文；`template` = 本地模板 | `ai` |
+| `DAILY_DIGEST_ENABLED` | 每日简报开关（预留配置） | `false` |
+| `DAILY_DIGEST_TIME` | 每日简报时间（`HH:MM`，24 小时制） | `21:30` |
 | `CATCHUP_SINCE_LAST_RUN` | 启动时补发上次退出后的邮件 | `true` |
 | `PROCESS_EXISTING_UNREAD` | 启动时处理全部未读（慎用） | `false` |
 | `IMAP_USE_IDLE` | IMAP IDLE（易断线，不推荐） | `false` |
-| `POLL_INTERVAL_SEC` | 轮询间隔（秒） | `60` |
+| `POLL_INTERVAL_SEC` | 检查新邮件间隔（秒，`1800`=30 分钟） | `1800` |
+| `IMAP_OVERQUOTA_WAIT_SEC` | Gmail `OVERQUOTA` 限流后等待再重试（秒） | `10800`（3 小时） |
 | `MAX_BODY_CHARS` | 送入模型的最大正文字符 | `12000` |
 | `WEB_HOST` / `WEB_PORT` | 配置页监听地址 | `127.0.0.1` / `8765` |
 
@@ -294,6 +297,12 @@ journalctl -u email-summary -f
 - Webhook 是否完整复制（含 `hook/` 后整段）
 - 机器人是否开启了「关键词」安全策略（可先关闭）
 - 用上文 `curl` 命令单独测试 Webhook
+
+### Gmail 报 `OVERQUOTA` / bandwidth limits
+
+- 表示 Gmail **暂时限制 IMAP**（连接太多、拉信太猛等），程序会自动等待后重试
+- 默认限流后 **3 小时** 再连（`IMAP_OVERQUOTA_WAIT_SEC=10800`），避免频繁重试加重封禁
+- 请关闭重复的「邮件助手」窗口、手机邮件客户端等同账号 IMAP，等待 1～24 小时后再试
 
 ### Gmail 登录失败 `AUTHENTICATE failed`
 

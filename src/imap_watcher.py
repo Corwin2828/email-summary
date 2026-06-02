@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 MAX_FETCH_PER_POLL = 20
 
 
+def _is_overquota_error(exc: BaseException) -> bool:
+    text = str(exc).upper()
+    return "OVERQUOTA" in text or "BANDWIDTH LIMITS" in text
+
+
+def _retry_wait_sec(
+    exc: BaseException, normal_sec: int, overquota_sec: int
+) -> int:
+    return overquota_sec if _is_overquota_error(exc) else normal_sec
+
+
 class ImapWatcher:
     def __init__(
         self,
@@ -27,6 +38,7 @@ class ImapWatcher:
         process_existing_unread: bool = False,
         catchup_since_last_run: bool = True,
         use_idle: bool = False,
+        overquota_wait_sec: int = 10800,
     ) -> None:
         self._account = account
         self._on_message = on_message
@@ -35,6 +47,7 @@ class ImapWatcher:
         self._process_existing_unread = process_existing_unread
         self._catchup_since_last_run = catchup_since_last_run
         self._use_idle = use_idle
+        self._overquota_wait_sec = max(60, overquota_wait_sec)
         self._runtime_baseline: set[str] | None = None
         self._catchup_done = False
         self._submitted_uids: set[str] = set()
@@ -214,8 +227,31 @@ class ImapWatcher:
 
         return self._fetch_uids(client, uids)
 
+    def _log_retry(self, exc: Exception, wait_sec: int, context: str) -> None:
+        if _is_overquota_error(exc):
+            if wait_sec >= 3600:
+                wait_label = f"约 {max(1, wait_sec // 3600)} 小时后"
+            else:
+                wait_label = f"约 {max(1, wait_sec // 60)} 分钟后"
+            logger.warning(
+                "%s %s：Gmail 限流 (OVERQUOTA)，%s重试: %s",
+                self._account.name,
+                context,
+                wait_label,
+                exc,
+            )
+        else:
+            logger.warning(
+                "%s %s：%ss 后重试: %s",
+                self._account.name,
+                context,
+                wait_sec,
+                exc,
+            )
+
     def run_poll_forever(self, poll_interval_sec: int) -> None:
         while True:
+            wait_sec = poll_interval_sec
             try:
                 batch = self.fetch_pending()
                 if batch:
@@ -227,14 +263,12 @@ class ImapWatcher:
                 for uid, raw in batch:
                     self._emit(uid, raw)
             except Exception as e:
-                logger.warning(
-                    "%s 轮询失败，%ss 后重试: %s",
-                    self._account.name,
-                    poll_interval_sec,
-                    e,
+                wait_sec = _retry_wait_sec(
+                    e, poll_interval_sec, self._overquota_wait_sec
                 )
+                self._log_retry(e, wait_sec, "轮询失败")
                 self._disconnect()
-            time.sleep(poll_interval_sec)
+            time.sleep(wait_sec)
 
     def run_forever(self, poll_fallback_sec: int) -> None:
         if not self._use_idle:
@@ -258,22 +292,20 @@ class ImapWatcher:
                             self._emit(uid, raw)
 
                     except Exception as e:
-                        logger.warning(
-                            "%s IDLE 中断，%ss 后重连: %s",
-                            self._account.name,
-                            poll_fallback_sec,
+                        wait_sec = _retry_wait_sec(
                             e,
+                            min(poll_fallback_sec, 30),
+                            self._overquota_wait_sec,
                         )
+                        self._log_retry(e, wait_sec, "IDLE 中断")
                         self._disconnect()
-                        time.sleep(min(poll_fallback_sec, 30))
+                        time.sleep(wait_sec)
                         break
 
             except Exception as e:
-                logger.error(
-                    "%s 连接失败，%ss 后重试: %s",
-                    self._account.name,
-                    poll_fallback_sec,
-                    e,
+                wait_sec = _retry_wait_sec(
+                    e, poll_fallback_sec, self._overquota_wait_sec
                 )
+                self._log_retry(e, wait_sec, "连接失败")
                 self._disconnect()
-                time.sleep(poll_fallback_sec)
+                time.sleep(wait_sec)

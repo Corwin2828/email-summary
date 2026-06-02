@@ -51,9 +51,12 @@ class AppConfig:
     max_body_chars: int
     filter_mode: str
     notify_format: str
+    daily_digest_enabled: bool
+    daily_digest_time: str
     process_existing_unread: bool
     catchup_since_last_run: bool
     imap_use_idle: bool
+    imap_overquota_wait_sec: int
     forward_source_map: dict[str, str]
 
 
@@ -79,6 +82,13 @@ def _resolve_notify_format() -> str:
     if raw in ("ai", "template"):
         return raw
     return "ai"
+
+
+def _resolve_daily_digest_time() -> str:
+    raw = os.getenv("DAILY_DIGEST_TIME", "21:30").strip()
+    if not raw:
+        return "21:30"
+    return raw
 
 
 def _parse_forward_source_map() -> dict[str, str]:
@@ -164,10 +174,16 @@ def load_config() -> AppConfig:
         raise ValueError("请至少配置 FEISHU_WEBHOOK_URL 或 WECOM_WEBHOOK_URL")
 
     try:
-        poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "60"))
+        poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "1800"))
     except ValueError:
-        poll_interval = 60
-    poll_interval = max(15, poll_interval)
+        poll_interval = 1800
+    poll_interval = max(900, poll_interval)
+
+    try:
+        overquota_wait = int(os.getenv("IMAP_OVERQUOTA_WAIT_SEC", "10800"))
+    except ValueError:
+        overquota_wait = 10800
+    overquota_wait = max(60, overquota_wait)
 
     try:
         max_body = int(os.getenv("MAX_BODY_CHARS", "12000"))
@@ -189,10 +205,13 @@ def load_config() -> AppConfig:
         max_body_chars=max_body,
         filter_mode=_resolve_filter_mode(),
         notify_format=_resolve_notify_format(),
+        daily_digest_enabled=_bool(os.getenv("DAILY_DIGEST_ENABLED")),
+        daily_digest_time=_resolve_daily_digest_time(),
         process_existing_unread=_bool(os.getenv("PROCESS_EXISTING_UNREAD")),
         catchup_since_last_run=_bool(
             os.getenv("CATCHUP_SINCE_LAST_RUN"), default=True
         ),
         imap_use_idle=_bool(os.getenv("IMAP_USE_IDLE")),
+        imap_overquota_wait_sec=overquota_wait,
         forward_source_map=_parse_forward_source_map(),
     )

@@ -102,6 +102,7 @@ def main() -> None:
             process_existing_unread=config.process_existing_unread,
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=config.imap_use_idle,
+            overquota_wait_sec=config.imap_overquota_wait_sec,
         )
 
         t = threading.Thread(
