@@ -8,8 +8,9 @@ import threading
 import time
 
 from src.app_state import save_last_active_at
-from src.config import load_config
+from src.config import AppConfig, load_config
 from src.imap_watcher import ImapWatcher
+from src.notify import send_text
 from src.pipeline import EmailPipeline
 from src.storage import ProcessedStore
 
@@ -41,6 +42,25 @@ def _start_mail_worker(
     t = threading.Thread(target=worker, name="mail-worker", daemon=True)
     t.start()
     return t
+
+
+def _make_imap_error_handler(config: AppConfig, account_label: str):
+    """连续失败时给飞书/企微发告警。"""
+
+    def handler(account_name: str, exc: Exception, count: int) -> None:
+        # 只在 3、6、9... 次发送，避免刷屏
+        text = (
+            f"【邮件总结助手告警】\n"
+            f"账户: {account_label or account_name}\n"
+            f"IMAP 轮询/连接连续失败 {count} 次，请检查网络或 Gmail 限流。\n"
+            f"最近一次错误: {exc}"
+        )
+        try:
+            send_text(config, text)
+        except Exception:
+            logger.exception("发送 IMAP 错误告警失败")
+
+    return handler
 
 
 def main() -> None:
@@ -103,6 +123,9 @@ def main() -> None:
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=config.imap_use_idle,
             overquota_wait_sec=config.imap_overquota_wait_sec,
+        )
+        watcher.set_error_callback(
+            _make_imap_error_handler(config, account.address or account.name)
         )
 
         t = threading.Thread(

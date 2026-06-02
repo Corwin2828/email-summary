@@ -52,6 +52,14 @@ class ImapWatcher:
         self._catchup_done = False
         self._submitted_uids: set[str] = set()
         self._client: IMAPClient | None = None
+        self._consecutive_failures = 0
+        self._on_error: Callable[[str, Exception, int], None] | None = None
+
+    def set_error_callback(
+        self, callback: Callable[[str, Exception, int], None] | None
+    ) -> None:
+        """设置错误回调：account_name, exc, failure_count。"""
+        self._on_error = callback
 
     def _emit(self, uid: str, raw: bytes) -> None:
         if uid in self._submitted_uids:
@@ -225,7 +233,10 @@ class ImapWatcher:
         else:
             uids = self._uids_for_live_poll(client)
 
-        return self._fetch_uids(client, uids)
+        result = self._fetch_uids(client, uids)
+        # 成功拉取（即使本轮没有新邮件）视为连接正常，重置连续失败计数
+        self._consecutive_failures = 0
+        return result
 
     def _log_retry(self, exc: Exception, wait_sec: int, context: str) -> None:
         if _is_overquota_error(exc):
@@ -249,6 +260,16 @@ class ImapWatcher:
                 exc,
             )
 
+    def _record_failure(self, exc: Exception) -> None:
+        self._consecutive_failures += 1
+        if self._on_error and self._consecutive_failures >= 3:
+            # 只在第 3、6、9... 次时通知，避免刷屏
+            if self._consecutive_failures % 3 == 0:
+                try:
+                    self._on_error(self.account_name, exc, self._consecutive_failures)
+                except Exception:
+                    logger.exception("错误回调执行失败")
+
     def run_poll_forever(self, poll_interval_sec: int) -> None:
         while True:
             wait_sec = poll_interval_sec
@@ -267,6 +288,7 @@ class ImapWatcher:
                     e, poll_interval_sec, self._overquota_wait_sec
                 )
                 self._log_retry(e, wait_sec, "轮询失败")
+                self._record_failure(e)
                 self._disconnect()
             time.sleep(wait_sec)
 
@@ -298,6 +320,7 @@ class ImapWatcher:
                             self._overquota_wait_sec,
                         )
                         self._log_retry(e, wait_sec, "IDLE 中断")
+                        self._record_failure(e)
                         self._disconnect()
                         time.sleep(wait_sec)
                         break
@@ -307,5 +330,6 @@ class ImapWatcher:
                     e, poll_fallback_sec, self._overquota_wait_sec
                 )
                 self._log_retry(e, wait_sec, "连接失败")
+                self._record_failure(e)
                 self._disconnect()
                 time.sleep(wait_sec)
