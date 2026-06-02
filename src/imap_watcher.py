@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from imapclient import IMAPClient
 
@@ -15,6 +16,9 @@ from src.config import AccountConfig
 logger = logging.getLogger(__name__)
 
 MAX_FETCH_PER_POLL = 20
+QUIET_TZ = ZoneInfo("Asia/Shanghai")  # 东八区
+QUIET_START_HOUR = 0  # 00:00
+QUIET_END_HOUR = 7  # 07:00（不含）
 
 
 def _is_overquota_error(exc: BaseException) -> bool:
@@ -26,6 +30,18 @@ def _retry_wait_sec(
     exc: BaseException, normal_sec: int, overquota_sec: int
 ) -> int:
     return overquota_sec if _is_overquota_error(exc) else normal_sec
+
+
+def _quiet_sleep_seconds(now: datetime) -> int:
+    """东八区 00:00-07:00 不轮询，返回需等待秒数。"""
+    local = now.astimezone(QUIET_TZ)
+    if not (QUIET_START_HOUR <= local.hour < QUIET_END_HOUR):
+        return 0
+    resume = local.replace(
+        hour=QUIET_END_HOUR, minute=0, second=0, microsecond=0
+    )
+    wait = int((resume - local).total_seconds())
+    return max(wait, 1)
 
 
 class ImapWatcher:
@@ -272,6 +288,17 @@ class ImapWatcher:
 
     def run_poll_forever(self, poll_interval_sec: int) -> None:
         while True:
+            quiet_wait = _quiet_sleep_seconds(datetime.now(timezone.utc))
+            if quiet_wait > 0:
+                mins = max(1, quiet_wait // 60)
+                logger.info(
+                    "%s 东八区静默时段（00:00-07:00），%d 分钟后恢复轮询",
+                    self._account.name,
+                    mins,
+                )
+                time.sleep(quiet_wait)
+                continue
+
             wait_sec = poll_interval_sec
             try:
                 batch = self.fetch_pending()
@@ -298,6 +325,17 @@ class ImapWatcher:
             return
 
         while True:
+            quiet_wait = _quiet_sleep_seconds(datetime.now(timezone.utc))
+            if quiet_wait > 0:
+                mins = max(1, quiet_wait // 60)
+                logger.info(
+                    "%s 东八区静默时段（00:00-07:00），%d 分钟后恢复轮询",
+                    self._account.name,
+                    mins,
+                )
+                time.sleep(quiet_wait)
+                continue
+
             try:
                 while True:
                     try:
