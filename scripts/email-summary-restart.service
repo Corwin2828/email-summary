@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily restart for Email Summary service
+Wants=email-summary.service
+After=email-summary.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart email-summary.service

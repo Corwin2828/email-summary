@@ -28,6 +28,8 @@ class DeepSeekClient:
                 {"role": "user", "content": user},
             ],
             temperature=0.3,
+            # 避免网络抖动时长时间卡死 worker，导致后续邮件都堆积不发送
+            timeout=90,
         )
         if not resp.choices:
             raise RuntimeError("DeepSeek 返回为空 choices")

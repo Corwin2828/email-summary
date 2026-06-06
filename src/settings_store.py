@@ -27,6 +27,9 @@ ENV_KEYS = [
     "IMAP_USE_IDLE",
     "POLL_INTERVAL_SEC",
     "IMAP_OVERQUOTA_WAIT_SEC",
+    "HEARTBEAT_ALERT_ENABLED",
+    "HEARTBEAT_STALL_SEC",
+    "HEARTBEAT_CHECK_SEC",
     "DATA_DIR",
     "MAX_BODY_CHARS",
     "FILTER_MODE",
@@ -174,5 +177,20 @@ def validate_settings(payload: dict) -> list[str]:
         digest_time = (env.get("DAILY_DIGEST_TIME") or "").strip()
         if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", digest_time):
             errors.append("每日简报时间格式应为 HH:MM（例如 21:30）")
+
+    for key, label, minimum in (
+        ("IMAP_OVERQUOTA_WAIT_SEC", "Gmail 限流等待秒数", 60),
+        ("HEARTBEAT_STALL_SEC", "卡住告警阈值秒数", 300),
+        ("HEARTBEAT_CHECK_SEC", "心跳检查间隔秒数", 60),
+    ):
+        raw = env.get(key, "").strip()
+        if not raw:
+            continue
+        try:
+            num = int(raw)
+            if num < minimum:
+                errors.append(f"{label}不能小于 {minimum}")
+        except ValueError:
+            errors.append(f"{label}必须是数字")
 
     return errors

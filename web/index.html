@@ -201,6 +201,14 @@
               <input type="number" name="IMAP_OVERQUOTA_WAIT_SEC" min="60" step="300" placeholder="10800" />
             </label>
             <label class="field">
+              <span>卡住告警阈值（秒，7200=2 小时）</span>
+              <input type="number" name="HEARTBEAT_STALL_SEC" min="300" step="300" placeholder="7200" />
+            </label>
+            <label class="field">
+              <span>心跳检查间隔（秒，300=5 分钟）</span>
+              <input type="number" name="HEARTBEAT_CHECK_SEC" min="60" step="60" placeholder="300" />
+            </label>
+            <label class="field">
               <span>邮件过滤模式</span>
               <select name="FILTER_MODE">
                 <option value="ai">DeepSeek 智能过滤（推荐）</option>
@@ -239,6 +247,11 @@
               <input type="checkbox" name="IMAP_USE_IDLE" />
               <span class="toggle-track"></span>
               <span class="toggle-label">使用 IMAP IDLE（不推荐，易断线）</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="HEARTBEAT_ALERT_ENABLED" />
+              <span class="toggle-track"></span>
+              <span class="toggle-label">启用队列卡住心跳告警</span>
             </label>
           </div>
         </section>

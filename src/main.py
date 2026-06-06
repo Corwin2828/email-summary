@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 
 from src.app_state import save_last_active_at
 from src.config import AppConfig, load_config
@@ -64,6 +65,59 @@ def _make_imap_error_handler(config: AppConfig, account_label: str):
     return handler
 
 
+def _start_stall_monitor(
+    config: AppConfig,
+    mail_queue: queue.Queue[tuple[str, str, bytes] | None],
+    get_last_activity_at,
+) -> threading.Thread | None:
+    """队列持续堆积且长时间无处理结果时发告警。"""
+    if not config.heartbeat_alert_enabled:
+        return None
+
+    def monitor() -> None:
+        alerting = False
+        while True:
+            time.sleep(config.heartbeat_check_sec)
+            pending = mail_queue.qsize()
+            if pending <= 0:
+                alerting = False
+                continue
+
+            last_active = get_last_activity_at()
+            idle_sec = int(
+                (datetime.now(timezone.utc) - last_active).total_seconds()
+            )
+            if idle_sec < config.heartbeat_stall_sec:
+                continue
+            if alerting:
+                continue
+
+            text = (
+                "【邮件总结助手告警】\n"
+                "检测到处理疑似卡住：\n"
+                f"- 待处理队列: {pending} 封\n"
+                f"- 最近一次处理结果距今: {max(1, idle_sec // 60)} 分钟\n"
+                f"- 阈值: {max(1, config.heartbeat_stall_sec // 60)} 分钟\n"
+                "建议检查 DeepSeek/网络连通性；如已配置 daily restart，系统会在下一次窗口自动重启。"
+            )
+            try:
+                send_text(config, text)
+                logger.warning(
+                    "已发送卡住告警：queue=%s idle=%ss", pending, idle_sec
+                )
+                alerting = True
+            except Exception:
+                logger.exception("发送卡住告警失败")
+
+    t = threading.Thread(
+        target=monitor,
+        name="stall-monitor",
+        daemon=True,
+    )
+    t.start()
+    return t
+
+
 def _poll_once(config: AppConfig, pipeline: EmailPipeline) -> None:
     """手动执行一轮轮询并退出（用于后台人工触发）。"""
     total = 0
@@ -114,8 +168,22 @@ def main() -> None:
         sys.exit(1)
 
     store = ProcessedStore(config.data_dir / "processed.db")
+    last_activity_lock = threading.Lock()
+    last_activity_at = datetime.now(timezone.utc)
+
+    def get_last_activity_at() -> datetime:
+        with last_activity_lock:
+            return last_activity_at
+
+    def mark_activity() -> None:
+        nonlocal last_activity_at
+        now = datetime.now(timezone.utc)
+        with last_activity_lock:
+            last_activity_at = now
+        save_last_active_at(config.data_dir, now)
+
     atexit.register(lambda: save_last_active_at(config.data_dir))
-    pipeline = EmailPipeline(config, store)
+    pipeline = EmailPipeline(config, store, on_activity=mark_activity)
 
     mode = "IDLE" if config.imap_use_idle else f"轮询每 {config.poll_interval_sec}s"
     logger.info("IMAP 模式: %s", mode)
@@ -154,6 +222,7 @@ def main() -> None:
 
     mail_queue: queue.Queue[tuple[str, str, bytes] | None] = queue.Queue()
     _start_mail_worker(pipeline, mail_queue)
+    _start_stall_monitor(config, mail_queue, get_last_activity_at)
 
     for account in config.accounts:
 
@@ -196,7 +265,7 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("正在退出…")
         mail_queue.put(None)
-        mail_queue.join(timeout=30)
+        mail_queue.join()
         save_last_active_at(config.data_dir)
         logger.info("已记录关闭时间，下次启动将补发此期间的邮件")
         store.close()

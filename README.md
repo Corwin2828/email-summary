@@ -263,6 +263,9 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 | `IMAP_USE_IDLE` | IMAP IDLE（易断线，不推荐） | `false` |
 | `POLL_INTERVAL_SEC` | 检查新邮件间隔（秒，`1800`=30 分钟） | `1800` |
 | `IMAP_OVERQUOTA_WAIT_SEC` | Gmail `OVERQUOTA` 限流后等待再重试（秒） | `10800`（3 小时） |
+| `HEARTBEAT_ALERT_ENABLED` | 队列卡住心跳告警开关（待处理>0 且长期无处理结果） | `true` |
+| `HEARTBEAT_STALL_SEC` | 判定“疑似卡住”的秒数阈值 | `7200`（2 小时） |
+| `HEARTBEAT_CHECK_SEC` | 心跳检查间隔（秒） | `300`（5 分钟） |
 | `MAX_BODY_CHARS` | 送入模型的最大正文字符 | `12000` |
 | `WEB_HOST` / `WEB_PORT` | 配置页监听地址 | `127.0.0.1` / `8765` |
 
@@ -304,9 +307,16 @@ sudo nano /etc/systemd/system/email-summary.service
 # WorkingDirectory=/opt/email-summary
 # ExecStart=/opt/email-summary/.venv/bin/python -m src.main
 
+# 配置每天自动重启（可选但推荐）
+sudo cp scripts/email-summary-restart.service /etc/systemd/system/email-summary-restart.service
+sudo cp scripts/email-summary-restart.timer /etc/systemd/system/email-summary-restart.timer
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now email-summary
+sudo systemctl enable --now email-summary-restart.timer
 sudo systemctl status email-summary
+sudo systemctl status email-summary-restart.timer
+systemctl list-timers | rg email-summary-restart
 sudo journalctl -u email-summary -f
 ```
 
@@ -422,7 +432,9 @@ cd /opt/email-summary
 ├── 打开设置.command
 ├── requirements.txt
 ├── scripts/
-│   └── email-summary.service   # Linux systemd 示例
+│   ├── email-summary.service           # 常驻服务
+│   ├── email-summary-restart.service   # 每日重启执行器
+│   └── email-summary-restart.timer     # 每日重启定时器
 ├── docs/
 │   └── Azure注册与无权限解决.md
 ├── web/                   # 配置页前端

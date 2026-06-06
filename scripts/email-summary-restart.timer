@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Email Summary daily restart
+
+[Timer]
+# 每天凌晨 04:20 重启常驻服务，避免长期运行状态漂移
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+Unit=email-summary-restart.service
+
+[Install]
+WantedBy=timers.target

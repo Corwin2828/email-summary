@@ -57,6 +57,9 @@ class AppConfig:
     catchup_since_last_run: bool
     imap_use_idle: bool
     imap_overquota_wait_sec: int
+    heartbeat_alert_enabled: bool
+    heartbeat_stall_sec: int
+    heartbeat_check_sec: int
     forward_source_map: dict[str, str]
 
 
@@ -186,6 +189,18 @@ def load_config() -> AppConfig:
     overquota_wait = max(60, overquota_wait)
 
     try:
+        heartbeat_stall_sec = int(os.getenv("HEARTBEAT_STALL_SEC", "7200"))
+    except ValueError:
+        heartbeat_stall_sec = 7200
+    heartbeat_stall_sec = max(300, heartbeat_stall_sec)
+
+    try:
+        heartbeat_check_sec = int(os.getenv("HEARTBEAT_CHECK_SEC", "300"))
+    except ValueError:
+        heartbeat_check_sec = 300
+    heartbeat_check_sec = max(60, heartbeat_check_sec)
+
+    try:
         max_body = int(os.getenv("MAX_BODY_CHARS", "12000"))
     except ValueError:
         max_body = 12000
@@ -213,5 +228,10 @@ def load_config() -> AppConfig:
         ),
         imap_use_idle=_bool(os.getenv("IMAP_USE_IDLE")),
         imap_overquota_wait_sec=overquota_wait,
+        heartbeat_alert_enabled=_bool(
+            os.getenv("HEARTBEAT_ALERT_ENABLED"), default=True
+        ),
+        heartbeat_stall_sec=heartbeat_stall_sec,
+        heartbeat_check_sec=heartbeat_check_sec,
         forward_source_map=_parse_forward_source_map(),
     )
