@@ -55,13 +55,68 @@ class EmailPipeline:
                 return acc.purpose
         return "personal"
 
-    def handle_raw(self, account: str, uid: str, raw: bytes) -> None:
+    def _account_config(self, account: str):
+        for acc in self._config.accounts:
+            if acc.name == account:
+                return acc
+        return None
+
+    def retry_delay_for(self, account: str) -> int:
+        acc = self._account_config(account)
+        if acc:
+            return max(30, acc.retry_failed_after_sec)
+        return 120
+
+    def _business_fallback_message(self, parsed) -> str:
+        body = parsed.body_text or ""
+        if len(body) > 2500:
+            body = body[:2500] + "\n\n[正文已截断，请登录邮箱查看完整原文]"
+        author = parsed.original_sender or parsed.sender or "(未知发件人)"
+        subject = parsed.inner_subject or parsed.subject or "(无主题)"
+        return "\n".join(
+            [
+                "【AEBBS 询盘兜底通知】",
+                "AI 总结或标准推送流程失败，但这封邮件可能是客户线索，已先推送原始信息。",
+                "━━━━━━━━━━━━━━",
+                f"账户: {parsed.account}",
+                f"发件人: {author}",
+                f"主题: {subject}",
+                f"时间: {parsed.date or '未知'}",
+                "━━━━━━━━━━━━━━",
+                body or "(无正文)",
+            ]
+        )
+
+    def _finish_business_with_fallback(self, account: str, uid: str, parsed) -> bool:
+        try:
+            send_text(
+                self._config,
+                self._business_fallback_message(parsed),
+                "business",
+            )
+        except Exception:
+            logger.exception(
+                "AEBBS 兜底通知发送失败，保留未完成状态以便重试: %s",
+                parsed.subject[:80],
+            )
+            return False
+        self._clear_attempt(account, uid)
+        self._mark_done(account, uid)
+        logger.warning(
+            "[AEBBS 兜底已推送] %s | %s",
+            account,
+            parsed.subject[:80],
+        )
+        return True
+
+    def handle_raw(self, account: str, uid: str, raw: bytes) -> bool:
         with self._lock:
             if self._store.seen(account, uid):
-                return
+                return True
 
             agg = self._aggregator_address(account)
             purpose = self._purpose_for_account(account)
+            acc = self._account_config(account)
             parsed = parse_raw_email(
                 account,
                 uid,
@@ -70,7 +125,13 @@ class EmailPipeline:
                 self._config.forward_source_map,
             )
 
-            if self._config.filter_mode == "ai":
+            if purpose == "business" and acc and acc.bypass_filter:
+                logger.info(
+                    "[保留] %s | AEBBS 已绕过过滤，避免漏掉客户邮件 | %s",
+                    account,
+                    parsed.subject[:60],
+                )
+            elif self._config.filter_mode == "ai":
                 try:
                     keep = self._ai.should_keep_ai(parsed, agg)
                 except Exception:
@@ -81,13 +142,17 @@ class EmailPipeline:
                         MAX_PROCESS_ATTEMPTS,
                         parsed.subject[:80],
                     )
+                    if purpose == "business":
+                        return self._finish_business_with_fallback(
+                            account, uid, parsed
+                        )
                     if attempts >= MAX_PROCESS_ATTEMPTS:
                         logger.error(
                             "AI 过滤多次失败，跳过该邮件: %s",
                             parsed.subject[:80],
                         )
                         self._mark_done(account, uid)
-                    return
+                    return True
 
                 if not keep:
                     logger.info(
@@ -96,13 +161,13 @@ class EmailPipeline:
                         parsed.subject[:60],
                     )
                     self._mark_done(account, uid)
-                    return
+                    return True
             else:
                 fr = classify_email(parsed, verification_mode="strict")
                 if not fr.should_summarize:
                     logger.info(format_skip_log(parsed, fr))
                     self._mark_done(account, uid)
-                    return
+                    return True
 
             try:
                 if self._config.notify_format == "ai":
@@ -118,12 +183,16 @@ class EmailPipeline:
                     MAX_PROCESS_ATTEMPTS,
                     parsed.subject[:80],
                 )
+                if purpose == "business":
+                    return self._finish_business_with_fallback(
+                        account, uid, parsed
+                    )
                 if attempts >= MAX_PROCESS_ATTEMPTS:
                     logger.error(
                         "已达最大重试次数，跳过该邮件: %s", parsed.subject[:80]
                     )
                     self._mark_done(account, uid)
-                return
+                return True
 
             try:
                 if self._config.notify_format == "ai":
@@ -138,14 +207,19 @@ class EmailPipeline:
                     MAX_PROCESS_ATTEMPTS,
                     parsed.subject[:80],
                 )
+                if purpose == "business":
+                    return self._finish_business_with_fallback(
+                        account, uid, parsed
+                    )
                 if attempts >= MAX_PROCESS_ATTEMPTS:
                     logger.error(
                         "通知发送多次失败，跳过该邮件: %s",
                         parsed.subject[:80],
                     )
                     self._mark_done(account, uid)
-                return
+                return True
 
             self._clear_attempt(account, uid)
             self._mark_done(account, uid)
             logger.info("[已总结] %s | %s", account, parsed.subject[:80])
+            return True

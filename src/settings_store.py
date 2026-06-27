@@ -34,6 +34,9 @@ ENV_KEYS = [
     "BUSINESS_POLL_INTERVAL_SEC",
     "BUSINESS_IMAP_RETRY_WAIT_SEC",
     "BUSINESS_QUIET_HOURS_ENABLED",
+    "BUSINESS_PROCESS_EXISTING_UNREAD",
+    "BUSINESS_RETRY_FAILED_AFTER_SEC",
+    "BUSINESS_BYPASS_FILTER",
     "FEISHU_WEBHOOK_URL",
     "WECOM_WEBHOOK_URL",
     "BUSINESS_FEISHU_WEBHOOK_URL",
@@ -57,6 +60,18 @@ ENV_KEYS = [
     "WEB_PORT",
 ]
 
+SECRET_KEYS = {
+    "DEEPSEEK_API_KEY",
+    "BUSINESS_DEEPSEEK_API_KEY",
+    "GMAIL_APP_PASSWORD",
+    "OUTLOOK_APP_PASSWORD",
+    "BUSINESS_EMAIL_PASSWORD",
+    "FEISHU_WEBHOOK_URL",
+    "WECOM_WEBHOOK_URL",
+    "BUSINESS_FEISHU_WEBHOOK_URL",
+    "BUSINESS_WECOM_WEBHOOK_URL",
+}
+
 
 def _format_env_value(value: str) -> str:
     """避免含特殊字符的值破坏 .env 格式。"""
@@ -72,7 +87,26 @@ def read_env_dict() -> dict[str, str]:
     if not ENV_PATH.exists():
         return {k: "" for k in ENV_KEYS}
     values = dotenv_values(ENV_PATH)
-    return {k: (values.get(k) or "") for k in ENV_KEYS}
+    result: dict[str, str] = {}
+    for key in ENV_KEYS:
+        if key in SECRET_KEYS:
+            result[key] = ""
+        else:
+            result[key] = values.get(key) or ""
+    return result
+
+
+def _merge_existing_secrets(env: dict[str, str]) -> dict[str, str]:
+    if not ENV_PATH.exists():
+        return env
+    values = dotenv_values(ENV_PATH)
+    merged = dict(env)
+    for key in SECRET_KEYS:
+        if key not in merged or merged[key] == "":
+            current = values.get(key) or ""
+            if current:
+                merged[key] = current
+    return merged
 
 
 def update_env_file(updates: dict[str, str]) -> None:
@@ -103,6 +137,9 @@ def update_env_file(updates: dict[str, str]) -> None:
 
 def _normalize_env_updates(updates: dict[str, str]) -> dict[str, str]:
     cleaned = {k: str(v).strip() for k, v in updates.items() if k in ENV_KEYS}
+    for key in list(cleaned):
+        if key in SECRET_KEYS and cleaned[key] == "":
+            cleaned.pop(key)
     if "GMAIL_APP_PASSWORD" in cleaned:
         cleaned["GMAIL_APP_PASSWORD"] = cleaned["GMAIL_APP_PASSWORD"].replace(
             " ", ""
@@ -147,7 +184,9 @@ def save_all_settings(payload: dict) -> None:
 
 def validate_settings(payload: dict) -> list[str]:
     errors: list[str] = []
-    env = _normalize_env_updates(payload.get("env") or {})
+    env = _merge_existing_secrets(
+        _normalize_env_updates(payload.get("env") or {})
+    )
 
     if not env.get("DEEPSEEK_API_KEY"):
         errors.append("DeepSeek API Key 不能为空")
@@ -209,6 +248,7 @@ def validate_settings(payload: dict) -> list[str]:
             ("BUSINESS_EMAIL_IMAP_PORT", "AEBBS IMAP 端口", 1),
             ("BUSINESS_POLL_INTERVAL_SEC", "AEBBS 轮询间隔秒数", 30),
             ("BUSINESS_IMAP_RETRY_WAIT_SEC", "AEBBS IMAP 重试等待秒数", 60),
+            ("BUSINESS_RETRY_FAILED_AFTER_SEC", "AEBBS 处理失败重试秒数", 30),
         ):
             raw = env.get(key, "").strip()
             if not raw:

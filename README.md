@@ -165,6 +165,9 @@ BUSINESS_EMAIL_PASSWORD=请填入邮箱密码
 BUSINESS_POLL_INTERVAL_SEC=60
 BUSINESS_IMAP_RETRY_WAIT_SEC=300
 BUSINESS_QUIET_HOURS_ENABLED=false
+BUSINESS_PROCESS_EXISTING_UNREAD=true
+BUSINESS_RETRY_FAILED_AFTER_SEC=120
+BUSINESS_BYPASS_FILTER=true
 ```
 
 AEBBS 独立机器人和模型：
@@ -182,6 +185,7 @@ BUSINESS_DEEPSEEK_MODEL=deepseek-chat
 - Gmail 对频繁 IMAP 轮询更敏感，旧版默认个人邮箱至少 15 分钟。
 - SiteGround 企业邮箱一般可以承受 60 秒级新邮件检查，但仍不是官方“无限轮询”接口，所以程序保留 `BUSINESS_IMAP_RETRY_WAIT_SEC` 退避重试。
 - 客户询盘默认关闭夜间静默，晚上也持续监听。
+- AEBBS 默认处理已有未读、绕过过滤；AI 总结失败时会先推送原始邮件摘要兜底；通知失败时不会标记已处理，并会自动重试。
 - AEBBS Prompt 会翻译客户邮件、总结需求，并生成中文与英文建议回复。
 
 后续知识库预留：
@@ -317,6 +321,9 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 | `BUSINESS_POLL_INTERVAL_SEC` | AEBBS 企业邮箱检查间隔 | `60` |
 | `BUSINESS_IMAP_RETRY_WAIT_SEC` | AEBBS 企业邮箱连接失败后的等待秒数 | `300` |
 | `BUSINESS_QUIET_HOURS_ENABLED` | AEBBS 是否启用夜间静默 | `false` |
+| `BUSINESS_PROCESS_EXISTING_UNREAD` | AEBBS 启动时处理已有未读 | `true` |
+| `BUSINESS_RETRY_FAILED_AFTER_SEC` | AEBBS 处理失败后的重试间隔 | `120` |
+| `BUSINESS_BYPASS_FILTER` | AEBBS 是否绕过过滤，避免漏客户 | `true` |
 | `BUSINESS_FEISHU_WEBHOOK_URL` / `BUSINESS_WECOM_WEBHOOK_URL` | AEBBS 独立通知机器人 | 空 |
 | `BUSINESS_DEEPSEEK_API_KEY` | AEBBS 独立模型 API Key | 空 |
 | `BUSINESS_KNOWLEDGE_DIR` | AEBBS RAG 知识库预留目录 | `./knowledge/aebbs` |

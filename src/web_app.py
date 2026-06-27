@@ -20,6 +20,30 @@ load_dotenv(ENV_PATH, override=True)
 
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
+    app.config["MAX_CONTENT_LENGTH"] = int(
+        os.getenv("WEB_MAX_CONTENT_LENGTH", "1048576")
+    )
+
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "style-src 'self' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "script-src 'self'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
+        if request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/")
     def index() -> object:

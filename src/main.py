@@ -28,6 +28,14 @@ def _start_mail_worker(
     pipeline: EmailPipeline,
     mail_queue: queue.Queue[tuple[str, str, bytes] | None],
 ) -> threading.Thread:
+    def retry_later(item: tuple[str, str, bytes], delay_sec: int) -> None:
+        def requeue() -> None:
+            mail_queue.put(item)
+
+        timer = threading.Timer(delay_sec, requeue)
+        timer.daemon = True
+        timer.start()
+
     def worker() -> None:
         while True:
             item = mail_queue.get()
@@ -35,7 +43,16 @@ def _start_mail_worker(
                 if item is None:
                     return
                 account, uid, raw = item
-                pipeline.handle_raw(account, uid, raw)
+                done = pipeline.handle_raw(account, uid, raw)
+                if not done:
+                    delay_sec = pipeline.retry_delay_for(account)
+                    logger.warning(
+                        "%s/%s 本次未完成，将在 %ss 后重试",
+                        account,
+                        uid,
+                        delay_sec,
+                    )
+                    retry_later(item, delay_sec)
             except Exception:
                 logger.exception("处理邮件失败")
             finally:
@@ -143,7 +160,11 @@ def _poll_once(
             account,
             lambda _uid, _raw: None,
             data_dir=config.data_dir,
-            process_existing_unread=config.process_existing_unread,
+            process_existing_unread=(
+                account.process_existing_unread
+                if account.process_existing_unread is not None
+                else config.process_existing_unread
+            ),
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=False,
             overquota_wait_sec=account.overquota_wait_sec
@@ -263,7 +284,11 @@ def main() -> None:
             account,
             make_handler(account.name),
             data_dir=config.data_dir,
-            process_existing_unread=config.process_existing_unread,
+            process_existing_unread=(
+                account.process_existing_unread
+                if account.process_existing_unread is not None
+                else config.process_existing_unread
+            ),
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=config.imap_use_idle,
             overquota_wait_sec=account.overquota_wait_sec

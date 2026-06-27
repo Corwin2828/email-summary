@@ -40,6 +40,9 @@ class AccountConfig:
     poll_interval_sec: int | None = None
     quiet_hours_enabled: bool = True
     overquota_wait_sec: int | None = None
+    process_existing_unread: bool | None = None
+    retry_failed_after_sec: int = 120
+    bypass_filter: bool = False
 
 
 @dataclass(frozen=True)
@@ -215,6 +218,19 @@ def load_config() -> AppConfig:
                     default=False,
                 ),
                 overquota_wait_sec=overquota_sec,
+                process_existing_unread=_bool(
+                    os.getenv("BUSINESS_PROCESS_EXISTING_UNREAD"),
+                    default=True,
+                ),
+                retry_failed_after_sec=_int_env(
+                    "BUSINESS_RETRY_FAILED_AFTER_SEC",
+                    120,
+                    30,
+                ),
+                bypass_filter=_bool(
+                    os.getenv("BUSINESS_BYPASS_FILTER"),
+                    default=True,
+                ),
             )
         )
 

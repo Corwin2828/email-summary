@@ -129,6 +129,10 @@
               <span>AEBBS IMAP 重试等待（秒）</span>
               <input type="number" name="BUSINESS_IMAP_RETRY_WAIT_SEC" min="60" step="60" placeholder="300" />
             </label>
+            <label class="field">
+              <span>AEBBS 处理失败重试（秒）</span>
+              <input type="number" name="BUSINESS_RETRY_FAILED_AFTER_SEC" min="30" step="30" placeholder="120" />
+            </label>
             <label class="field field-full">
               <span>AEBBS 飞书 Webhook</span>
               <input type="url" name="BUSINESS_FEISHU_WEBHOOK_URL" placeholder="https://open.feishu.cn/…" />
@@ -157,6 +161,16 @@
               <input type="checkbox" name="BUSINESS_QUIET_HOURS_ENABLED" />
               <span class="toggle-track"></span>
               <span class="toggle-label">AEBBS 也使用夜间静默（默认关闭）</span>
+            </label>
+            <label class="toggle toggle-inline">
+              <input type="checkbox" name="BUSINESS_PROCESS_EXISTING_UNREAD" />
+              <span class="toggle-track"></span>
+              <span class="toggle-label">AEBBS 启动时处理已有未读（推荐开启）</span>
+            </label>
+            <label class="toggle toggle-inline">
+              <input type="checkbox" name="BUSINESS_BYPASS_FILTER" />
+              <span class="toggle-track"></span>
+              <span class="toggle-label">AEBBS 绕过过滤，全部进入总结/兜底（推荐开启）</span>
             </label>
           </div>
         </section>
