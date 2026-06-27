@@ -55,6 +55,7 @@ class ImapWatcher:
         catchup_since_last_run: bool = True,
         use_idle: bool = False,
         overquota_wait_sec: int = 10800,
+        quiet_hours_enabled: bool = True,
     ) -> None:
         self._account = account
         self._on_message = on_message
@@ -64,6 +65,7 @@ class ImapWatcher:
         self._catchup_since_last_run = catchup_since_last_run
         self._use_idle = use_idle
         self._overquota_wait_sec = max(60, overquota_wait_sec)
+        self._quiet_hours_enabled = quiet_hours_enabled
         self._runtime_baseline: set[str] | None = None
         self._catchup_done = False
         self._submitted_uids: set[str] = set()
@@ -201,9 +203,9 @@ class ImapWatcher:
             self._catchup_done = True
             return
 
-        last = load_last_active_at(self._data_dir)
+        last = load_last_active_at(self._data_dir, self._account.name)
         if last is None:
-            save_last_active_at(self._data_dir)
+            save_last_active_at(self._data_dir, account=self._account.name)
             logger.info(
                 "%s 首次运行：不补发历史邮件，已记录起点时间",
                 self._account.name,
@@ -291,7 +293,11 @@ class ImapWatcher:
 
     def run_poll_forever(self, poll_interval_sec: int) -> None:
         while True:
-            quiet_wait = _quiet_sleep_seconds(datetime.now(timezone.utc))
+            quiet_wait = (
+                _quiet_sleep_seconds(datetime.now(timezone.utc))
+                if self._quiet_hours_enabled
+                else 0
+            )
             if quiet_wait > 0:
                 mins = max(1, quiet_wait // 60)
                 logger.info(
@@ -328,7 +334,11 @@ class ImapWatcher:
             return
 
         while True:
-            quiet_wait = _quiet_sleep_seconds(datetime.now(timezone.utc))
+            quiet_wait = (
+                _quiet_sleep_seconds(datetime.now(timezone.utc))
+                if self._quiet_hours_enabled
+                else 0
+            )
             if quiet_wait > 0:
                 mins = max(1, quiet_wait // 60)
                 logger.info(

@@ -36,6 +36,10 @@ class AccountConfig:
     use_oauth: bool = False
     azure_client_id: str = ""
     token_cache_path: Path | None = None
+    purpose: str = "personal"
+    poll_interval_sec: int | None = None
+    quiet_hours_enabled: bool = True
+    overquota_wait_sec: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,9 +47,14 @@ class AppConfig:
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
+    business_deepseek_api_key: str
+    business_deepseek_base_url: str
+    business_deepseek_model: str
     accounts: list[AccountConfig]
     feishu_webhook: str | None
     wecom_webhook: str | None
+    business_feishu_webhook: str | None
+    business_wecom_webhook: str | None
     poll_interval_sec: int
     data_dir: Path
     max_body_chars: int
@@ -112,6 +121,14 @@ def _parse_forward_source_map() -> dict[str, str]:
     return result
 
 
+def _int_env(name: str, default: int, minimum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, value)
+
+
 def load_config() -> AppConfig:
     accounts: list[AccountConfig] = []
     data_dir = resolve_data_dir()
@@ -164,17 +181,67 @@ def load_config() -> AppConfig:
                 "或 OUTLOOK_APP_PASSWORD"
             )
 
+    if _bool(os.getenv("BUSINESS_EMAIL_ENABLED")):
+        name = os.getenv("BUSINESS_EMAIL_NAME", "aebbs-support").strip()
+        addr = os.getenv("BUSINESS_EMAIL_ADDRESS", "").strip().lower()
+        host = os.getenv("BUSINESS_EMAIL_IMAP_HOST", "").strip()
+        pwd = os.getenv("BUSINESS_EMAIL_PASSWORD", "").strip()
+        port = _int_env("BUSINESS_EMAIL_IMAP_PORT", 993, 1)
+        poll_sec = _int_env("BUSINESS_POLL_INTERVAL_SEC", 60, 30)
+        overquota_sec = _int_env("BUSINESS_IMAP_RETRY_WAIT_SEC", 300, 60)
+
+        if not name:
+            raise ValueError("企业邮箱已启用：请填写 BUSINESS_EMAIL_NAME")
+        if not addr:
+            raise ValueError("企业邮箱已启用：请填写 BUSINESS_EMAIL_ADDRESS")
+        if not host:
+            raise ValueError("企业邮箱已启用：请填写 BUSINESS_EMAIL_IMAP_HOST")
+        if not pwd:
+            raise ValueError("企业邮箱已启用：请填写 BUSINESS_EMAIL_PASSWORD")
+        if any(acc.name == name for acc in accounts):
+            raise ValueError(f"邮箱账户名重复：{name}")
+
+        accounts.append(
+            AccountConfig(
+                name=name,
+                host=host,
+                port=port,
+                address=addr,
+                password=pwd,
+                purpose="business",
+                poll_interval_sec=poll_sec,
+                quiet_hours_enabled=_bool(
+                    os.getenv("BUSINESS_QUIET_HOURS_ENABLED"),
+                    default=False,
+                ),
+                overquota_wait_sec=overquota_sec,
+            )
+        )
+
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         raise ValueError("请在 .env 中设置 DEEPSEEK_API_KEY")
 
     if not accounts:
-        raise ValueError("请至少启用并配置一个邮箱（Gmail 或 Outlook）")
+        raise ValueError("请至少启用并配置一个邮箱（Gmail、Outlook 或 AEBBS 企业邮箱）")
 
     feishu = os.getenv("FEISHU_WEBHOOK_URL", "").strip() or None
     wecom = os.getenv("WECOM_WEBHOOK_URL", "").strip() or None
-    if not feishu and not wecom:
-        raise ValueError("请至少配置 FEISHU_WEBHOOK_URL 或 WECOM_WEBHOOK_URL")
+    business_feishu = os.getenv("BUSINESS_FEISHU_WEBHOOK_URL", "").strip() or None
+    business_wecom = os.getenv("BUSINESS_WECOM_WEBHOOK_URL", "").strip() or None
+
+    has_personal = any(acc.purpose == "personal" for acc in accounts)
+    has_business = any(acc.purpose == "business" for acc in accounts)
+    if has_personal and not feishu and not wecom:
+        raise ValueError("个人邮箱已启用：请至少配置 FEISHU_WEBHOOK_URL 或 WECOM_WEBHOOK_URL")
+    if has_business:
+        if not business_feishu and not business_wecom:
+            raise ValueError(
+                "企业邮箱已启用：请至少配置 BUSINESS_FEISHU_WEBHOOK_URL "
+                "或 BUSINESS_WECOM_WEBHOOK_URL"
+            )
+        if not os.getenv("BUSINESS_DEEPSEEK_API_KEY", "").strip():
+            raise ValueError("企业邮箱已启用：请填写 BUSINESS_DEEPSEEK_API_KEY")
 
     try:
         poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "1800"))
@@ -212,9 +279,22 @@ def load_config() -> AppConfig:
             "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
         ).strip(),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip(),
+        business_deepseek_api_key=os.getenv(
+            "BUSINESS_DEEPSEEK_API_KEY", ""
+        ).strip(),
+        business_deepseek_base_url=os.getenv(
+            "BUSINESS_DEEPSEEK_BASE_URL",
+            os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        ).strip(),
+        business_deepseek_model=os.getenv(
+            "BUSINESS_DEEPSEEK_MODEL",
+            os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        ).strip(),
         accounts=accounts,
         feishu_webhook=feishu,
         wecom_webhook=wecom,
+        business_feishu_webhook=business_feishu,
+        business_wecom_webhook=business_wecom,
         poll_interval_sec=poll_interval,
         data_dir=data_dir,
         max_body_chars=max_body,

@@ -48,33 +48,47 @@ def build_notification_template(email: ParsedEmail, summary: str) -> str:
     return "\n".join(lines)
 
 
-def send_text(config: AppConfig, text: str) -> None:
+def _channels_for_purpose(config: AppConfig, purpose: str) -> list[tuple[str, str]]:
+    if purpose == "business":
+        channels: list[tuple[str, str]] = []
+        if config.business_feishu_webhook:
+            channels.append((config.business_feishu_webhook, "feishu"))
+        if config.business_wecom_webhook:
+            channels.append((config.business_wecom_webhook, "wecom"))
+        return channels
+
+    channels = []
+    if config.feishu_webhook:
+        channels.append((config.feishu_webhook, "feishu"))
+    if config.wecom_webhook:
+        channels.append((config.wecom_webhook, "wecom"))
+    return channels
+
+
+def send_text(config: AppConfig, text: str, purpose: str = "personal") -> None:
     """将文本原样推送到已配置的 Webhook。"""
     errors: list[str] = []
     sent = False
 
-    if config.feishu_webhook:
+    for webhook, label in _channels_for_purpose(config, purpose):
         try:
-            _send_text(config.feishu_webhook, text, "feishu")
-            logger.info("已通过飞书发送")
+            _send_text(webhook, text, label)
+            logger.info("已通过%s发送", "飞书" if label == "feishu" else "企业微信")
             sent = True
         except Exception as e:
-            logger.warning("飞书发送失败: %s", e)
-            errors.append(f"飞书: {e}")
-
-    if config.wecom_webhook:
-        try:
-            _send_text(config.wecom_webhook, text, "wecom")
-            logger.info("已通过企业微信发送")
-            sent = True
-        except Exception as e:
-            logger.warning("企业微信发送失败: %s", e)
-            errors.append(f"企业微信: {e}")
+            channel = "飞书" if label == "feishu" else "企业微信"
+            logger.warning("%s发送失败: %s", channel, e)
+            errors.append(f"{channel}: {e}")
 
     if not sent:
         raise RuntimeError("; ".join(errors) or "未配置通知渠道")
 
 
-def send_summary(config: AppConfig, email: ParsedEmail, summary: str) -> None:
+def send_summary(
+    config: AppConfig,
+    email: ParsedEmail,
+    summary: str,
+    purpose: str = "personal",
+) -> None:
     """template 模式：本地套模板后发送。"""
-    send_text(config, build_notification_template(email, summary))
+    send_text(config, build_notification_template(email, summary), purpose)

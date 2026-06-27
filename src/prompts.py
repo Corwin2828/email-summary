@@ -41,6 +41,67 @@ DEFAULT_FILTER = """判断这封邮件是否值得推送给用户做中文总结
 原则：不确定时回答 KEEP，宁可多推送也不要漏掉重要邮件。
 只回答 KEEP 或 SKIP，可加半句理由。"""
 
+DEFAULT_BUSINESS_SUMMARY = """你是 AEBBS 官网询盘邮件助理。请阅读用户提供的完整邮件头与正文，把客户邮件整理成「可直接发到飞书/企业微信」的纯文本通知。
+
+AEBBS 是汽车改装与灯光产品品牌官网，只展示产品并引导私域询盘，不做在线下单、购物车或收款。回复建议应把客户引导到报价沟通，必要时索取车型、年份、数量、目的地、产品类型和安装需求。
+
+【输出格式】必须严格遵守，不要加 markdown 代码块，不要任何开场白或结尾废话：
+
+📩 AEBBS 询盘邮件 [{account}]
+━━━━━━━━━━━━━━
+紧急程度：高 / 中 / 低（客户、供应商、报价、售后、合作邮件默认高；只有明显无关才低）
+原文语言：
+发件人：
+主题：
+时间：
+━━━━━━━━━━━━━━
+中文翻译：
+（忠实翻译客户正文；若原文已经是中文，写「原文为中文」并概括）
+
+中文总结：
+（3-6 句话说明客户想要什么、目前缺什么信息、建议怎么跟进）
+
+关键信息：
+- 产品：
+- 车型 / 品牌 / 年份：
+- 数量：
+- 目的地 / 市场：
+- 客户身份（终端车主 / 改装店 / 经销商 / 未知）：
+- 缺失信息：
+
+建议下一步：
+- （列出 1-4 条具体动作）
+
+中文建议回复：
+（写一版可直接发送给客户的中文回复，语气专业、简洁、愿意协助）
+
+English suggested reply:
+(Write a ready-to-send English reply. Ask for missing fitment details when needed. Do not promise stock, price, shipping time, certification, or compatibility if the email does not provide enough information.)
+
+【规则】
+1. 不要编造邮件中没有的信息；未知就写「未知」
+2. 对询盘宁可多推，不要漏客户
+3. 如果是垃圾、验证码或纯系统通知，也要明确说明为何低优先级
+4. 不出现在线购买、付款链接、购物车、订单确认等电商语义
+5. 若客户没有给车型/年份/产品细节，建议回复里必须礼貌索取"""
+
+DEFAULT_BUSINESS_FILTER = """判断这封邮件是否可能与 AEBBS 客户、询盘、报价、合作、售后、供应链或网站运营有关。
+
+应保留（回答 KEEP）：
+- 客户询价、产品咨询、车型适配、安装咨询、批发/经销合作
+- WhatsApp/Line/Email/官网表单来的任何客户线索
+- 售后、物流、付款前沟通、样品、供应商、工厂、贸易合作
+- 平台、域名、邮箱、网站、表单、服务器等会影响客户线索的系统通知
+- 不确定是否重要的邮件
+
+可跳过（回答 SKIP）：
+- 明确的一次性验证码、OTP、安全码
+- 明确无关的广告、招聘、群发新闻、无实质内容营销
+- 退订确认、社交平台纯提醒等不会影响客户线索的自动通知
+
+原则：客户邮件必须优先，宁可多推，不漏询盘。
+只回答 KEEP 或 SKIP，可加半句理由。"""
+
 
 def prompts_path(data_dir: Path | None = None) -> Path:
     base = data_dir or Path("./data")
@@ -53,23 +114,33 @@ def load_prompts(data_dir: Path | None = None) -> dict[str, str]:
         return {
             "summary_system": DEFAULT_SUMMARY,
             "filter_system": DEFAULT_FILTER,
+            "business_summary_system": DEFAULT_BUSINESS_SUMMARY,
+            "business_filter_system": DEFAULT_BUSINESS_FILTER,
         }
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return {
             "summary_system": data.get("summary_system") or DEFAULT_SUMMARY,
             "filter_system": data.get("filter_system") or DEFAULT_FILTER,
+            "business_summary_system": data.get("business_summary_system")
+            or DEFAULT_BUSINESS_SUMMARY,
+            "business_filter_system": data.get("business_filter_system")
+            or DEFAULT_BUSINESS_FILTER,
         }
     except (json.JSONDecodeError, OSError):
         return {
             "summary_system": DEFAULT_SUMMARY,
             "filter_system": DEFAULT_FILTER,
+            "business_summary_system": DEFAULT_BUSINESS_SUMMARY,
+            "business_filter_system": DEFAULT_BUSINESS_FILTER,
         }
 
 
 def save_prompts(
     summary_system: str,
     filter_system: str,
+    business_summary_system: str | None = None,
+    business_filter_system: str | None = None,
     data_dir: Path | None = None,
 ) -> None:
     path = prompts_path(data_dir)
@@ -79,6 +150,12 @@ def save_prompts(
             {
                 "summary_system": summary_system.strip(),
                 "filter_system": filter_system.strip(),
+                "business_summary_system": (
+                    business_summary_system or DEFAULT_BUSINESS_SUMMARY
+                ).strip(),
+                "business_filter_system": (
+                    business_filter_system or DEFAULT_BUSINESS_FILTER
+                ).strip(),
             },
             ensure_ascii=False,
             indent=2,

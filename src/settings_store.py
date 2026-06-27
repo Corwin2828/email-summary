@@ -14,6 +14,9 @@ ENV_KEYS = [
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
     "DEEPSEEK_MODEL",
+    "BUSINESS_DEEPSEEK_API_KEY",
+    "BUSINESS_DEEPSEEK_BASE_URL",
+    "BUSINESS_DEEPSEEK_MODEL",
     "GMAIL_ENABLED",
     "GMAIL_ADDRESS",
     "GMAIL_APP_PASSWORD",
@@ -22,8 +25,20 @@ ENV_KEYS = [
     "OUTLOOK_USE_OAUTH",
     "AZURE_CLIENT_ID",
     "OUTLOOK_APP_PASSWORD",
+    "BUSINESS_EMAIL_ENABLED",
+    "BUSINESS_EMAIL_NAME",
+    "BUSINESS_EMAIL_ADDRESS",
+    "BUSINESS_EMAIL_IMAP_HOST",
+    "BUSINESS_EMAIL_IMAP_PORT",
+    "BUSINESS_EMAIL_PASSWORD",
+    "BUSINESS_POLL_INTERVAL_SEC",
+    "BUSINESS_IMAP_RETRY_WAIT_SEC",
+    "BUSINESS_QUIET_HOURS_ENABLED",
     "FEISHU_WEBHOOK_URL",
     "WECOM_WEBHOOK_URL",
+    "BUSINESS_FEISHU_WEBHOOK_URL",
+    "BUSINESS_WECOM_WEBHOOK_URL",
+    "BUSINESS_KNOWLEDGE_DIR",
     "IMAP_USE_IDLE",
     "POLL_INTERVAL_SEC",
     "IMAP_OVERQUOTA_WAIT_SEC",
@@ -96,6 +111,8 @@ def _normalize_env_updates(updates: dict[str, str]) -> dict[str, str]:
         cleaned["GMAIL_ADDRESS"] = cleaned["GMAIL_ADDRESS"].lower()
     if "OUTLOOK_ADDRESS" in cleaned and cleaned["OUTLOOK_ADDRESS"]:
         cleaned["OUTLOOK_ADDRESS"] = cleaned["OUTLOOK_ADDRESS"].lower()
+    if "BUSINESS_EMAIL_ADDRESS" in cleaned and cleaned["BUSINESS_EMAIL_ADDRESS"]:
+        cleaned["BUSINESS_EMAIL_ADDRESS"] = cleaned["BUSINESS_EMAIL_ADDRESS"].lower()
     return cleaned
 
 
@@ -122,6 +139,8 @@ def save_all_settings(payload: dict) -> None:
     save_prompts(
         prompts.get("summary_system", ""),
         prompts.get("filter_system", ""),
+        prompts.get("business_summary_system", ""),
+        prompts.get("business_filter_system", ""),
         data_dir,
     )
 
@@ -139,8 +158,13 @@ def validate_settings(payload: dict) -> list[str]:
         "true",
         "yes",
     )
-    if not gmail_on and not outlook_on:
-        errors.append("请至少启用 Gmail 或 Outlook 之一")
+    business_on = env.get("BUSINESS_EMAIL_ENABLED", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not gmail_on and not outlook_on and not business_on:
+        errors.append("请至少启用 Gmail、Outlook 或 AEBBS 企业邮箱之一")
 
     if gmail_on:
         if not env.get("GMAIL_ADDRESS"):
@@ -163,8 +187,38 @@ def validate_settings(payload: dict) -> list[str]:
 
     feishu = env.get("FEISHU_WEBHOOK_URL", "")
     wecom = env.get("WECOM_WEBHOOK_URL", "")
-    if not feishu and not wecom:
-        errors.append("请至少填写飞书或企业微信 Webhook")
+    if (gmail_on or outlook_on) and not feishu and not wecom:
+        errors.append("个人邮箱启用时，请至少填写飞书或企业微信 Webhook")
+
+    if business_on:
+        if not env.get("BUSINESS_EMAIL_NAME"):
+            errors.append("AEBBS 企业邮箱账户名不能为空")
+        if not env.get("BUSINESS_EMAIL_ADDRESS"):
+            errors.append("AEBBS 企业邮箱地址不能为空")
+        if not env.get("BUSINESS_EMAIL_IMAP_HOST"):
+            errors.append("AEBBS 企业邮箱 IMAP 服务器不能为空")
+        if not env.get("BUSINESS_EMAIL_PASSWORD"):
+            errors.append("AEBBS 企业邮箱密码不能为空")
+        if not env.get("BUSINESS_DEEPSEEK_API_KEY"):
+            errors.append("AEBBS 企业邮箱需要填写独立模型 API Key")
+        if not env.get("BUSINESS_FEISHU_WEBHOOK_URL") and not env.get(
+            "BUSINESS_WECOM_WEBHOOK_URL"
+        ):
+            errors.append("AEBBS 企业邮箱需要填写独立飞书或企业微信 Webhook")
+        for key, label, minimum in (
+            ("BUSINESS_EMAIL_IMAP_PORT", "AEBBS IMAP 端口", 1),
+            ("BUSINESS_POLL_INTERVAL_SEC", "AEBBS 轮询间隔秒数", 30),
+            ("BUSINESS_IMAP_RETRY_WAIT_SEC", "AEBBS IMAP 重试等待秒数", 60),
+        ):
+            raw = env.get(key, "").strip()
+            if not raw:
+                continue
+            try:
+                num = int(raw)
+                if num < minimum:
+                    errors.append(f"{label}不能小于 {minimum}")
+            except ValueError:
+                errors.append(f"{label}必须是数字")
 
     try:
         poll = int(env.get("POLL_INTERVAL_SEC") or "1800")

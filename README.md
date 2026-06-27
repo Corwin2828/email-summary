@@ -13,6 +13,7 @@
 - **AI 推送格式**（`NOTIFY_FORMAT=ai`）：DeepSeek 按 Prompt 生成整段飞书/企微消息（区分发件人与「转发自哪个邮箱」）
 - **关闭期间补发**：正常 `Ctrl+C` 退出后，下次启动可总结上次关闭以来收到的邮件
 - **本地网页配置**：`./settings.sh` 修改 API、Webhook、Prompt
+- **AEBBS 企业询盘通道**：支持 SiteGround 企业邮箱独立轮询、独立机器人、独立模型 Prompt
 - **Mac 双击启动**：`启动邮件助手.command` / `打开设置.command`
 
 > **说明**：本工具**不能**推送到个人微信；请使用飞书或企业微信群机器人。
@@ -25,6 +26,7 @@
 |------|----------|------|
 | [DeepSeek API Key](https://platform.deepseek.com/api_keys) | 是 | 用于过滤与总结 |
 | Gmail + 应用专用密码 | 推荐 | 最省事的监听方式；也可只监听 Outlook |
+| SiteGround 企业邮箱 | AEBBS 询盘需要 | 用 `support@aebbstuning.com` 做客户邮件入口 |
 | 飞书 **或** 企业微信 Webhook | 至少一个 | 用于接收推送 |
 | Outlook OAuth（Azure Client ID） | 仅直连 Outlook 时 | 个人 @outlook.com 已不能用应用密码登录 IMAP |
 
@@ -147,11 +149,56 @@ FORWARD_SOURCE_MAP=you@school.edu:学校邮箱,you@outlook.com:个人Outlook
 
 ---
 
-## 三、获取飞书 Webhook
+## 三、配置 AEBBS / SiteGround 企业邮箱
+
+AEBBS 客户询盘建议使用**独立通道**：独立 SiteGround 邮箱、独立飞书机器人、独立模型 API Key。这样个人邮件故障、限流或 Prompt 调整不会影响客户线索。
+
+SiteGround 邮箱参数：
+
+```env
+BUSINESS_EMAIL_ENABLED=true
+BUSINESS_EMAIL_NAME=aebbs-support
+BUSINESS_EMAIL_ADDRESS=support@aebbstuning.com
+BUSINESS_EMAIL_IMAP_HOST=mail.aebbstuning.com
+BUSINESS_EMAIL_IMAP_PORT=993
+BUSINESS_EMAIL_PASSWORD=请填入邮箱密码
+BUSINESS_POLL_INTERVAL_SEC=60
+BUSINESS_IMAP_RETRY_WAIT_SEC=300
+BUSINESS_QUIET_HOURS_ENABLED=false
+```
+
+AEBBS 独立机器人和模型：
+
+```env
+BUSINESS_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的AEBBS机器人
+BUSINESS_WECOM_WEBHOOK_URL=
+BUSINESS_DEEPSEEK_API_KEY=sk-你的AEBBS专用Key
+BUSINESS_DEEPSEEK_BASE_URL=https://api.deepseek.com
+BUSINESS_DEEPSEEK_MODEL=deepseek-chat
+```
+
+企业邮箱与 Gmail 的差别：
+
+- Gmail 对频繁 IMAP 轮询更敏感，旧版默认个人邮箱至少 15 分钟。
+- SiteGround 企业邮箱一般可以承受 60 秒级新邮件检查，但仍不是官方“无限轮询”接口，所以程序保留 `BUSINESS_IMAP_RETRY_WAIT_SEC` 退避重试。
+- 客户询盘默认关闭夜间静默，晚上也持续监听。
+- AEBBS Prompt 会翻译客户邮件、总结需求，并生成中文与英文建议回复。
+
+后续知识库预留：
+
+```env
+BUSINESS_KNOWLEDGE_DIR=./knowledge/aebbs
+```
+
+这里将来可以放产品资料、车型适配、常见报价口径和回复规范，后续再接 RAG；当前版本只保留目录和配置，不会自动读取知识库。
+
+---
+
+## 四、获取飞书 Webhook
 
 飞书 **自定义机器人** 需在 **桌面端或网页版** 创建（手机 App 里往往没有入口）。
 
-### 3.1 创建步骤
+### 4.1 创建步骤
 
 1. 打开 [飞书](https://www.feishu.cn/) 客户端或网页版  
 2. 进入要接收总结的 **群聊**（可自建群）  
@@ -164,13 +211,13 @@ FORWARD_SOURCE_MAP=you@school.edu:学校邮箱,you@outlook.com:个人Outlook
 https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
-### 3.2 写入 `.env`
+### 4.2 写入 `.env`
 
 ```env
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的token
 ```
 
-### 3.3 自测
+### 4.3 自测
 
 ```bash
 curl -X POST "$FEISHU_WEBHOOK_URL" \
@@ -182,11 +229,11 @@ curl -X POST "$FEISHU_WEBHOOK_URL" \
 
 ---
 
-## 四、获取企业微信 Webhook
+## 五、获取企业微信 Webhook
 
 需使用 **企业微信**（不是个人微信）。没有企业可先 [注册企业微信](https://work.weixin.qq.com/)（可免费创建团队）。
 
-### 4.1 创建步骤
+### 5.1 创建步骤
 
 1. 打开 **企业微信** 桌面端或 [管理后台](https://work.weixin.qq.com/)  
 2. 进入一个 **内部群聊**（需先创建群）  
@@ -198,7 +245,7 @@ curl -X POST "$FEISHU_WEBHOOK_URL" \
 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
-### 4.2 写入 `.env`
+### 5.2 写入 `.env`
 
 ```env
 WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
@@ -210,19 +257,19 @@ WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
 
 ---
 
-## 五、配置 Outlook IMAP（可选）
+## 六、配置 Outlook IMAP（可选）
 
 | 账号类型 | 登录方式 |
 |----------|----------|
 | 个人 `@outlook.com` / `@hotmail.com` | **必须 OAuth**（应用密码已失效） |
 | 学校 / 公司 Microsoft 365 | 常需管理员放行；更简单是 **转发到 Gmail** |
 
-### 5.1 开启 IMAP（个人 Outlook）
+### 6.1 开启 IMAP（个人 Outlook）
 
 1. 打开 [Outlook 网页版](https://outlook.live.com/)  
 2. **设置** → **邮件** → **转发和 IMAP** → 开启 **IMAP**
 
-### 5.2 OAuth 配置（个人账号）
+### 6.2 OAuth 配置（个人账号）
 
 微软要求注册 Azure 应用获取 `AZURE_CLIENT_ID`，并在本机/VPS 完成一次浏览器登录。
 
@@ -263,6 +310,16 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 | `IMAP_USE_IDLE` | IMAP IDLE（易断线，不推荐） | `false` |
 | `POLL_INTERVAL_SEC` | 检查新邮件间隔（秒，`1800`=30 分钟） | `1800` |
 | `IMAP_OVERQUOTA_WAIT_SEC` | Gmail `OVERQUOTA` 限流后等待再重试（秒） | `10800`（3 小时） |
+| `BUSINESS_EMAIL_ENABLED` | 启用 AEBBS 企业邮箱监听 | `false` |
+| `BUSINESS_EMAIL_NAME` | 企业邮箱账户名，用于状态与日志隔离 | `aebbs-support` |
+| `BUSINESS_EMAIL_ADDRESS` | AEBBS 客户询盘邮箱 | `support@aebbstuning.com` |
+| `BUSINESS_EMAIL_IMAP_HOST` / `BUSINESS_EMAIL_IMAP_PORT` | SiteGround IMAP 地址与端口 | `mail.aebbstuning.com` / `993` |
+| `BUSINESS_POLL_INTERVAL_SEC` | AEBBS 企业邮箱检查间隔 | `60` |
+| `BUSINESS_IMAP_RETRY_WAIT_SEC` | AEBBS 企业邮箱连接失败后的等待秒数 | `300` |
+| `BUSINESS_QUIET_HOURS_ENABLED` | AEBBS 是否启用夜间静默 | `false` |
+| `BUSINESS_FEISHU_WEBHOOK_URL` / `BUSINESS_WECOM_WEBHOOK_URL` | AEBBS 独立通知机器人 | 空 |
+| `BUSINESS_DEEPSEEK_API_KEY` | AEBBS 独立模型 API Key | 空 |
+| `BUSINESS_KNOWLEDGE_DIR` | AEBBS RAG 知识库预留目录 | `./knowledge/aebbs` |
 | `HEARTBEAT_ALERT_ENABLED` | 队列卡住心跳告警开关（待处理>0 且长期无处理结果） | `true` |
 | `HEARTBEAT_STALL_SEC` | 判定“疑似卡住”的秒数阈值 | `7200`（2 小时） |
 | `HEARTBEAT_CHECK_SEC` | 心跳检查间隔（秒） | `300`（5 分钟） |

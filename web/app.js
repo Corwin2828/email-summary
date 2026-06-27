@@ -2,6 +2,9 @@ const ENV_KEYS = [
   "DEEPSEEK_API_KEY",
   "DEEPSEEK_BASE_URL",
   "DEEPSEEK_MODEL",
+  "BUSINESS_DEEPSEEK_API_KEY",
+  "BUSINESS_DEEPSEEK_BASE_URL",
+  "BUSINESS_DEEPSEEK_MODEL",
   "GMAIL_ENABLED",
   "GMAIL_ADDRESS",
   "GMAIL_APP_PASSWORD",
@@ -10,8 +13,20 @@ const ENV_KEYS = [
   "OUTLOOK_USE_OAUTH",
   "AZURE_CLIENT_ID",
   "OUTLOOK_APP_PASSWORD",
+  "BUSINESS_EMAIL_ENABLED",
+  "BUSINESS_EMAIL_NAME",
+  "BUSINESS_EMAIL_ADDRESS",
+  "BUSINESS_EMAIL_IMAP_HOST",
+  "BUSINESS_EMAIL_IMAP_PORT",
+  "BUSINESS_EMAIL_PASSWORD",
+  "BUSINESS_POLL_INTERVAL_SEC",
+  "BUSINESS_IMAP_RETRY_WAIT_SEC",
+  "BUSINESS_QUIET_HOURS_ENABLED",
   "FEISHU_WEBHOOK_URL",
   "WECOM_WEBHOOK_URL",
+  "BUSINESS_FEISHU_WEBHOOK_URL",
+  "BUSINESS_WECOM_WEBHOOK_URL",
+  "BUSINESS_KNOWLEDGE_DIR",
   "IMAP_USE_IDLE",
   "POLL_INTERVAL_SEC",
   "IMAP_OVERQUOTA_WAIT_SEC",
@@ -31,6 +46,8 @@ const BOOL_KEYS = new Set([
   "GMAIL_ENABLED",
   "OUTLOOK_ENABLED",
   "OUTLOOK_USE_OAUTH",
+  "BUSINESS_EMAIL_ENABLED",
+  "BUSINESS_QUIET_HOURS_ENABLED",
   "IMAP_USE_IDLE",
   "HEARTBEAT_ALERT_ENABLED",
   "DAILY_DIGEST_ENABLED",
@@ -80,6 +97,8 @@ function collectPayload() {
     prompts: {
       summary_system: form.elements.summary_system.value,
       filter_system: form.elements.filter_system.value,
+      business_summary_system: form.elements.business_summary_system.value,
+      business_filter_system: form.elements.business_filter_system.value,
     },
   };
 }
@@ -105,6 +124,8 @@ function fillForm(data) {
   const prompts = data.prompts || {};
   form.elements.summary_system.value = prompts.summary_system || "";
   form.elements.filter_system.value = prompts.filter_system || "";
+  form.elements.business_summary_system.value = prompts.business_summary_system || "";
+  form.elements.business_filter_system.value = prompts.business_filter_system || "";
   pathsEl.textContent = `.env → ${data.env_path || ""}  ·  prompts → ${data.prompts_path || ""}`;
   snapshot = serializeForm();
   setDirty(false);

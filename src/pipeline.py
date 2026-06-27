@@ -21,7 +21,7 @@ class EmailPipeline:
         self,
         config: AppConfig,
         store: ProcessedStore,
-        on_activity: Callable[[], None] | None = None,
+        on_activity: Callable[[str], None] | None = None,
     ) -> None:
         self._config = config
         self._store = store
@@ -41,7 +41,7 @@ class EmailPipeline:
     def _mark_done(self, account: str, uid: str) -> None:
         self._store.mark(account, uid)
         if self._on_activity:
-            self._on_activity()
+            self._on_activity(account)
 
     def _aggregator_address(self, account: str) -> str:
         for acc in self._config.accounts:
@@ -49,12 +49,19 @@ class EmailPipeline:
                 return acc.address
         return ""
 
+    def _purpose_for_account(self, account: str) -> str:
+        for acc in self._config.accounts:
+            if acc.name == account:
+                return acc.purpose
+        return "personal"
+
     def handle_raw(self, account: str, uid: str, raw: bytes) -> None:
         with self._lock:
             if self._store.seen(account, uid):
                 return
 
             agg = self._aggregator_address(account)
+            purpose = self._purpose_for_account(account)
             parsed = parse_raw_email(
                 account,
                 uid,
@@ -120,9 +127,9 @@ class EmailPipeline:
 
             try:
                 if self._config.notify_format == "ai":
-                    send_text(self._config, message or "")
+                    send_text(self._config, message or "", purpose)
                 else:
-                    send_summary(self._config, parsed, summary)  # type: ignore[name-defined]
+                    send_summary(self._config, parsed, summary, purpose)  # type: ignore[name-defined]
             except Exception:
                 attempts = self._bump_attempt(account, uid)
                 logger.exception(

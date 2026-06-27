@@ -46,7 +46,17 @@ def _start_mail_worker(
     return t
 
 
-def _make_imap_error_handler(config: AppConfig, account_label: str):
+def _alert_purpose(config: AppConfig) -> str:
+    if config.feishu_webhook or config.wecom_webhook:
+        return "personal"
+    return "business"
+
+
+def _make_imap_error_handler(
+    config: AppConfig,
+    account_label: str,
+    purpose: str,
+):
     """连续失败时给飞书/企微发告警。"""
 
     def handler(account_name: str, exc: Exception, count: int) -> None:
@@ -58,7 +68,7 @@ def _make_imap_error_handler(config: AppConfig, account_label: str):
             f"最近一次错误: {exc}"
         )
         try:
-            send_text(config, text)
+            send_text(config, text, purpose)
         except Exception:
             logger.exception("发送 IMAP 错误告警失败")
 
@@ -101,7 +111,7 @@ def _start_stall_monitor(
                 "建议检查 DeepSeek/网络连通性；如已配置 daily restart，系统会在下一次窗口自动重启。"
             )
             try:
-                send_text(config, text)
+                send_text(config, text, _alert_purpose(config))
                 logger.warning(
                     "已发送卡住告警：queue=%s idle=%ss", pending, idle_sec
                 )
@@ -118,11 +128,17 @@ def _start_stall_monitor(
     return t
 
 
-def _poll_once(config: AppConfig, pipeline: EmailPipeline) -> None:
+def _poll_once(
+    config: AppConfig,
+    pipeline: EmailPipeline,
+    account_filter: str | None = None,
+) -> None:
     """手动执行一轮轮询并退出（用于后台人工触发）。"""
     total = 0
 
     for account in config.accounts:
+        if account_filter and account.name != account_filter:
+            continue
         watcher = ImapWatcher(
             account,
             lambda _uid, _raw: None,
@@ -130,7 +146,9 @@ def _poll_once(config: AppConfig, pipeline: EmailPipeline) -> None:
             process_existing_unread=config.process_existing_unread,
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=False,
-            overquota_wait_sec=config.imap_overquota_wait_sec,
+            overquota_wait_sec=account.overquota_wait_sec
+            or config.imap_overquota_wait_sec,
+            quiet_hours_enabled=account.quiet_hours_enabled,
         )
         try:
             batch = watcher.fetch_pending()
@@ -158,6 +176,10 @@ def main() -> None:
         action="store_true",
         help="执行一次轮询后退出（不常驻）",
     )
+    parser.add_argument(
+        "--account",
+        help="只处理指定账户名，例如 gmail / outlook / aebbs-support",
+    )
     args = parser.parse_args()
 
     try:
@@ -175,17 +197,22 @@ def main() -> None:
         with last_activity_lock:
             return last_activity_at
 
-    def mark_activity() -> None:
+    def mark_activity(account_name: str) -> None:
         nonlocal last_activity_at
         now = datetime.now(timezone.utc)
         with last_activity_lock:
             last_activity_at = now
-        save_last_active_at(config.data_dir, now)
+        save_last_active_at(config.data_dir, now, account_name)
 
-    atexit.register(lambda: save_last_active_at(config.data_dir))
+    def save_shutdown_state() -> None:
+        now = datetime.now(timezone.utc)
+        for acc in config.accounts:
+            save_last_active_at(config.data_dir, now, acc.name)
+
+    atexit.register(save_shutdown_state)
     pipeline = EmailPipeline(config, store, on_activity=mark_activity)
 
-    mode = "IDLE" if config.imap_use_idle else f"轮询每 {config.poll_interval_sec}s"
+    mode = "IDLE" if config.imap_use_idle else "定时轮询"
     logger.info("IMAP 模式: %s", mode)
     filter_label = (
         "DeepSeek 判断是否总结"
@@ -216,7 +243,7 @@ def main() -> None:
             )
 
     if args.poll_once:
-        _poll_once(config, pipeline)
+        _poll_once(config, pipeline, args.account)
         store.close()
         return
 
@@ -239,20 +266,32 @@ def main() -> None:
             process_existing_unread=config.process_existing_unread,
             catchup_since_last_run=config.catchup_since_last_run,
             use_idle=config.imap_use_idle,
-            overquota_wait_sec=config.imap_overquota_wait_sec,
+            overquota_wait_sec=account.overquota_wait_sec
+            or config.imap_overquota_wait_sec,
+            quiet_hours_enabled=account.quiet_hours_enabled,
         )
         watcher.set_error_callback(
-            _make_imap_error_handler(config, account.address or account.name)
+            _make_imap_error_handler(
+                config,
+                account.address or account.name,
+                account.purpose,
+            )
         )
 
+        poll_interval = account.poll_interval_sec or config.poll_interval_sec
         t = threading.Thread(
             target=watcher.run_forever,
-            args=(config.poll_interval_sec,),
+            args=(poll_interval,),
             name=f"imap-{account.name}",
             daemon=True,
         )
         t.start()
-        logger.info("已启动监听线程: %s", account.name)
+        logger.info(
+            "已启动监听线程: %s (%s, 每 %ss)",
+            account.name,
+            account.purpose,
+            poll_interval,
+        )
 
     logger.info(
         "邮件总结助手已运行。账户: %s | 按 Ctrl+C 退出",
@@ -266,7 +305,7 @@ def main() -> None:
         logger.info("正在退出…")
         mail_queue.put(None)
         mail_queue.join()
-        save_last_active_at(config.data_dir)
+        save_shutdown_state()
         logger.info("已记录关闭时间，下次启动将补发此期间的邮件")
         store.close()
 

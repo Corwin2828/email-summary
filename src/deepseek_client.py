@@ -15,14 +15,39 @@ logger = logging.getLogger(__name__)
 class DeepSeekClient:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._client = OpenAI(
-            api_key=config.deepseek_api_key,
-            base_url=config.deepseek_base_url,
-        )
+        self._clients: dict[str, OpenAI] = {}
 
-    def _chat(self, system: str, user: str) -> str:
-        resp = self._client.chat.completions.create(
-            model=self._config.deepseek_model,
+    def _purpose_for_account(self, account: str) -> str:
+        for acc in self._config.accounts:
+            if acc.name == account:
+                return acc.purpose
+        return "personal"
+
+    def _client_for(self, purpose: str) -> OpenAI:
+        if purpose in self._clients:
+            return self._clients[purpose]
+
+        if purpose == "business":
+            client = OpenAI(
+                api_key=self._config.business_deepseek_api_key,
+                base_url=self._config.business_deepseek_base_url,
+            )
+        else:
+            client = OpenAI(
+                api_key=self._config.deepseek_api_key,
+                base_url=self._config.deepseek_base_url,
+            )
+        self._clients[purpose] = client
+        return client
+
+    def _model_for(self, purpose: str) -> str:
+        if purpose == "business":
+            return self._config.business_deepseek_model
+        return self._config.deepseek_model
+
+    def _chat(self, system: str, user: str, purpose: str = "personal") -> str:
+        resp = self._client_for(purpose).chat.completions.create(
+            model=self._model_for(purpose),
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -65,7 +90,11 @@ class DeepSeekClient:
     ) -> bool:
         prompts = load_prompts(self._config.data_dir)
         user = self._email_packet(email, aggregator_address)
-        out = self._chat(prompts["filter_system"], user).upper()
+        purpose = self._purpose_for_account(email.account)
+        prompt_key = (
+            "business_filter_system" if purpose == "business" else "filter_system"
+        )
+        out = self._chat(prompts[prompt_key], user, purpose).upper()
         return out.startswith("KEEP")
 
     def compose_notification(
@@ -73,9 +102,15 @@ class DeepSeekClient:
     ) -> str:
         """由 DeepSeek 按 Prompt 规定格式生成整段推送文案。"""
         prompts = load_prompts(self._config.data_dir)
-        system = prompts["summary_system"].replace("{account}", email.account)
+        purpose = self._purpose_for_account(email.account)
+        prompt_key = (
+            "business_summary_system"
+            if purpose == "business"
+            else "summary_system"
+        )
+        system = prompts[prompt_key].replace("{account}", email.account)
         user = self._email_packet(email, aggregator_address)
-        return self._chat(system, user)
+        return self._chat(system, user, purpose)
 
     def summarize(self, email: ParsedEmail) -> str:
         """旧模式：仅返回总结正文（由本地模板拼装通知）。"""
@@ -94,7 +129,8 @@ class DeepSeekClient:
             "你是邮件助理。请用简体中文 3-5 句话总结下列邮件正文，"
             "若有待办请列出。只输出总结正文，不要加标题。"
         )
-        return self._chat(legacy_prompt, user)
+        purpose = self._purpose_for_account(email.account)
+        return self._chat(legacy_prompt, user, purpose)
 
 
 def format_skip_log(email: ParsedEmail, fr: FilterResult) -> str:
