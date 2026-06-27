@@ -16,6 +16,9 @@ data/
 data/outlook_msal_cache.json
 data/app_state.json
 data/prompts.json
+data/web_users.json
+data/web_session_secret
+knowledge/aebbs/.backups/
 
 # macOS
 .AppleDouble

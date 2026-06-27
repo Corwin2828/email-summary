@@ -363,13 +363,23 @@ chmod 600 .env
 chmod +x run.sh
 ./run.sh   # 首次试跑成功后 Ctrl+C
 
+# 初始化管理台账号（只需一次）
+source .venv/bin/activate
+python -m src.auth_store bootstrap
+
 # 配置 systemd 常驻
 sudo cp scripts/email-summary.service /etc/systemd/system/email-summary.service
+sudo cp scripts/email-summary-web.service /etc/systemd/system/email-summary-web.service
 sudo nano /etc/systemd/system/email-summary.service
 # 推荐修改为：
 # User=ubuntu
 # WorkingDirectory=/opt/email-summary
 # ExecStart=/opt/email-summary/.venv/bin/python -m src.main
+sudo nano /etc/systemd/system/email-summary-web.service
+# 推荐修改为：
+# User=ubuntu
+# WorkingDirectory=/opt/email-summary
+# ExecStart=/opt/email-summary/.venv/bin/python -m src.web_app
 
 # 配置每天自动重启（可选但推荐）
 sudo cp scripts/email-summary-restart.service /etc/systemd/system/email-summary-restart.service
@@ -377,64 +387,39 @@ sudo cp scripts/email-summary-restart.timer /etc/systemd/system/email-summary-re
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now email-summary
+sudo systemctl enable --now email-summary-web
 sudo systemctl enable --now email-summary-restart.timer
 sudo systemctl status email-summary
+sudo systemctl status email-summary-web
 sudo systemctl status email-summary-restart.timer
 systemctl list-timers | rg email-summary-restart
 sudo journalctl -u email-summary -f
 ```
 
-- **不要**将配置页 `8765` 端口直接对公网开放；远程改配置建议用 SSH 隧道：`ssh -L 8765:127.0.0.1:8765 user@服务器IP`
+- **不要**将配置页 `8765` 端口直接对公网开放；远程改配置使用 SSH tunnel：
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 user@服务器IP
+```
+
+然后在本机浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
 - 确保 VPS 能访问：`imap.gmail.com:993`、`api.deepseek.com`、飞书/企微 API
 - 腾讯云安全组建议：
   - 必开：`22/tcp`（SSH）
-  - 如使用方案B：再开 `80/tcp`（以及后续 `443/tcp`）
-  - 不建议直接开放 `8765/tcp`
+  - 不需要开放 `80/tcp` / `443/tcp`
+  - 禁止开放 `8765/tcp`
 
-### 方案B：直接浏览器访问配置页（Nginx + 账号密码）
+管理台权限：
 
-如果你希望不用 SSH 隧道，直接在浏览器打开 `https://你的域名/settings`，推荐用 Nginx 反向代理 + 基础认证：
-
-1. 准备一个域名并解析到 VPS 公网 IP
-2. 安装 Nginx 与密码工具
-
-```bash
-sudo apt install -y nginx apache2-utils
-sudo htpasswd -c /etc/nginx/.htpasswd admin
-```
-
-3. 新建 Nginx 配置（将 `your.domain.com` 改为你的域名）
-
-```nginx
-server {
-    listen 80;
-    server_name your.domain.com;
-
-    location /settings/ {
-        proxy_pass http://127.0.0.1:8765/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        auth_basic "Email Summary Settings";
-        auth_basic_user_file /etc/nginx/.htpasswd;
-    }
-}
-```
-
-4. 启用配置并重载 Nginx
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-5. 单独启动设置页服务（建议另建 systemd，避免手工运行）
-
-```bash
-cd /opt/email-summary
-./settings.sh
-```
-
-> 强烈建议继续加 HTTPS（Let's Encrypt）后再长期开放公网访问；否则账号密码会明文传输。
+- `owner`：可管理完整邮箱配置、私人 Prompt、AEBBS Prompt 与 RAG 文件
+- `team`：只能管理 AEBBS Prompt 与 `knowledge/aebbs` 下的 RAG 文件
+- 密码哈希保存在 `data/web_users.json`，不进 Git
+- RAG 文件保存前会备份到 `knowledge/aebbs/.backups/`
 
 
 ---
@@ -497,15 +482,20 @@ cd /opt/email-summary
 ├── requirements.txt
 ├── scripts/
 │   ├── email-summary.service           # 常驻服务
+│   ├── email-summary-web.service       # SSH tunnel 管理台服务
 │   ├── email-summary-restart.service   # 每日重启执行器
 │   └── email-summary-restart.timer     # 每日重启定时器
 ├── docs/
 │   └── Azure注册与无权限解决.md
+├── knowledge/
+│   └── aebbs/              # AEBBS RAG 资料目录
 ├── web/                   # 配置页前端
 └── src/
+    ├── auth_store.py       # 管理台账号与密码哈希
     ├── main.py
     ├── imap_watcher.py
     ├── deepseek_client.py
+    ├── rag_store.py
     ├── notify.py
     └── ...
 ```

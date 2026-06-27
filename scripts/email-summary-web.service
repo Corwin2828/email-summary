@@ -1,0 +1,16 @@
+[Unit]
+Description=Email Summary Web Admin (SSH tunnel only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/email-summary
+ExecStart=/opt/email-summary/.venv/bin/python -m src.web_app
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

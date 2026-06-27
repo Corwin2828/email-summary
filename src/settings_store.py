@@ -58,6 +58,11 @@ ENV_KEYS = [
     "CATCHUP_SINCE_LAST_RUN",
     "WEB_HOST",
     "WEB_PORT",
+    "WEB_MAX_CONTENT_LENGTH",
+    "WEB_RAG_MAX_FILE_BYTES",
+    "WEB_LOGIN_MAX_ATTEMPTS",
+    "WEB_LOGIN_WINDOW_SEC",
+    "WEB_COOKIE_SECURE",
 ]
 
 SECRET_KEYS = {
@@ -178,6 +183,43 @@ def save_all_settings(payload: dict) -> None:
         prompts.get("filter_system", ""),
         prompts.get("business_summary_system", ""),
         prompts.get("business_filter_system", ""),
+        data_dir,
+    )
+
+
+def read_prompt_settings(owner: bool = False) -> dict[str, str]:
+    env = read_env_dict()
+    data_dir = resolve_data_dir(env.get("DATA_DIR") or None)
+    prompts = load_prompts(data_dir)
+    if owner:
+        return prompts
+    return {
+        "business_summary_system": prompts.get("business_summary_system", ""),
+        "business_filter_system": prompts.get("business_filter_system", ""),
+    }
+
+
+def save_prompt_settings(payload: dict, owner: bool = False) -> None:
+    env = read_env_dict()
+    data_dir = resolve_data_dir(env.get("DATA_DIR") or None)
+    current = load_prompts(data_dir)
+    updates = payload.get("prompts") or {}
+    allowed = {
+        "business_summary_system",
+        "business_filter_system",
+    }
+    if owner:
+        allowed.update({"summary_system", "filter_system"})
+
+    for key, value in updates.items():
+        if key in allowed:
+            current[key] = str(value)
+
+    save_prompts(
+        current.get("summary_system", ""),
+        current.get("filter_system", ""),
+        current.get("business_summary_system", ""),
+        current.get("business_filter_system", ""),
         data_dir,
     )
 
