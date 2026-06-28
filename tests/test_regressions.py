@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from email.message import EmailMessage
@@ -14,9 +15,10 @@ from src import config as cfg
 from src import pipeline as pipeline_mod
 from src import settings_store, web_app
 from src.auth_store import set_user_password
+from src.deepseek_client import DeepSeekClient
 from src.email_parser import ParsedEmail, parse_raw_email
 from src.filter_rules import classify_email
-from src.prompts import DEFAULT_BUSINESS_FILTER
+from src.prompts import BUSINESS_FILTER_GUARDRAILS, DEFAULT_BUSINESS_FILTER
 from src.storage import ProcessedStore
 
 
@@ -106,6 +108,76 @@ Can you quote?"""
         self.assertTrue(parsed.is_forwarded)
         self.assertIn("buyer@example.com", parsed.original_sender.lower())
         self.assertTrue(parsed.forward_via.startswith("Old Inbox"))
+
+    def test_business_filter_guardrails_apply_to_custom_prompt(self) -> None:
+        data_dir = self.tmp / "guardrails"
+        data_dir.mkdir(parents=True)
+        (data_dir / "prompts.json").write_text(
+            json.dumps(
+                {
+                    "business_filter_system": "OLD BUSINESS PROMPT",
+                }
+            ),
+            encoding="utf-8",
+        )
+        account = cfg.AccountConfig(
+            name="aebbs-support",
+            host="imap.example.com",
+            port=993,
+            address="support@example.com",
+            password="pw",
+            purpose="business",
+        )
+        app_config = cfg.AppConfig(
+            deepseek_api_key="fake",
+            deepseek_base_url="https://example.invalid",
+            deepseek_model="deepseek-chat",
+            business_deepseek_api_key="fake-business",
+            business_deepseek_base_url="https://example.invalid",
+            business_deepseek_model="deepseek-chat",
+            accounts=[account],
+            feishu_webhook=None,
+            wecom_webhook=None,
+            business_feishu_webhook="https://example.invalid/hook",
+            business_wecom_webhook=None,
+            poll_interval_sec=900,
+            data_dir=data_dir,
+            max_body_chars=1000,
+            filter_mode="ai",
+            notify_format="ai",
+            daily_digest_enabled=False,
+            daily_digest_time="21:30",
+            process_existing_unread=False,
+            catchup_since_last_run=True,
+            imap_use_idle=False,
+            imap_overquota_wait_sec=10800,
+            heartbeat_alert_enabled=True,
+            heartbeat_stall_sec=7200,
+            heartbeat_check_sec=300,
+            forward_source_map={},
+        )
+        client = DeepSeekClient(app_config)
+        captured: dict[str, str] = {}
+
+        def fake_chat(system: str, user: str, purpose: str = "personal") -> str:
+            captured["system"] = system
+            captured["purpose"] = purpose
+            return "KEEP"
+
+        client._chat = fake_chat  # type: ignore[method-assign]
+        email = ParsedEmail(
+            "aebbs-support",
+            "3",
+            "Need quote",
+            "buyer@example.com",
+            "",
+            "Can you quote headlights?",
+        )
+
+        self.assertTrue(client.should_keep_ai(email, "support@example.com"))
+        self.assertEqual(captured["purpose"], "business")
+        self.assertIn("OLD BUSINESS PROMPT", captured["system"])
+        self.assertIn(BUSINESS_FILTER_GUARDRAILS, captured["system"])
 
     def test_personal_failures_request_retry_until_max_attempts(self) -> None:
         original_ai = pipeline_mod.DeepSeekClient

@@ -7,7 +7,7 @@ from openai import OpenAI
 from src.config import AppConfig
 from src.email_parser import ParsedEmail
 from src.filter_rules import FilterResult
-from src.prompts import load_prompts
+from src.prompts import BUSINESS_FILTER_GUARDRAILS, load_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,10 @@ class DeepSeekClient:
         prompt_key = (
             "business_filter_system" if purpose == "business" else "filter_system"
         )
-        out = self._chat(prompts[prompt_key], user, purpose).upper()
+        system = prompts[prompt_key]
+        if purpose == "business" and BUSINESS_FILTER_GUARDRAILS not in system:
+            system = f"{system.rstrip()}\n\n{BUSINESS_FILTER_GUARDRAILS}"
+        out = self._chat(system, user, purpose).upper()
         return out.startswith("KEEP")
 
     def compose_notification(
