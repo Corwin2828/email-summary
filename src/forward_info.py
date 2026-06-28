@@ -224,8 +224,6 @@ def parse_forward_info(
     if block_to:
         mailbox_candidates.append(block_to)
     mailbox_candidates.extend(_headers_source_mailbox(msg, aggregator_address))
-    if source_map:
-        mailbox_candidates.extend(source_map.keys())
 
     source_mailbox = _pick_source_mailbox(
         mailbox_candidates, aggregator_address, source_map

@@ -230,6 +230,25 @@ def validate_settings(payload: dict) -> list[str]:
         _normalize_env_updates(payload.get("env") or {})
     )
 
+    def validate_int(
+        key: str,
+        label: str,
+        minimum: int,
+        maximum: int | None = None,
+    ) -> None:
+        raw = env.get(key, "").strip()
+        if not raw:
+            return
+        try:
+            num = int(raw)
+        except ValueError:
+            errors.append(f"{label}必须是数字")
+            return
+        if num < minimum:
+            errors.append(f"{label}不能小于 {minimum}")
+        if maximum is not None and num > maximum:
+            errors.append(f"{label}不能大于 {maximum}")
+
     if not env.get("DEEPSEEK_API_KEY"):
         errors.append("DeepSeek API Key 不能为空")
 
@@ -292,15 +311,7 @@ def validate_settings(payload: dict) -> list[str]:
             ("BUSINESS_IMAP_RETRY_WAIT_SEC", "AEBBS IMAP 重试等待秒数", 60),
             ("BUSINESS_RETRY_FAILED_AFTER_SEC", "AEBBS 处理失败重试秒数", 30),
         ):
-            raw = env.get(key, "").strip()
-            if not raw:
-                continue
-            try:
-                num = int(raw)
-                if num < minimum:
-                    errors.append(f"{label}不能小于 {minimum}")
-            except ValueError:
-                errors.append(f"{label}必须是数字")
+            validate_int(key, label, minimum)
 
     try:
         poll = int(env.get("POLL_INTERVAL_SEC") or "1800")
@@ -318,15 +329,14 @@ def validate_settings(payload: dict) -> list[str]:
         ("IMAP_OVERQUOTA_WAIT_SEC", "Gmail 限流等待秒数", 60),
         ("HEARTBEAT_STALL_SEC", "卡住告警阈值秒数", 300),
         ("HEARTBEAT_CHECK_SEC", "心跳检查间隔秒数", 60),
+        ("MAX_BODY_CHARS", "送入模型的最大正文字符数", 1000),
+        ("WEB_MAX_CONTENT_LENGTH", "网页请求体大小限制", 1024),
+        ("WEB_RAG_MAX_FILE_BYTES", "知识库单文件大小限制", 1),
+        ("WEB_LOGIN_MAX_ATTEMPTS", "登录失败次数限制", 1),
+        ("WEB_LOGIN_WINDOW_SEC", "登录失败统计窗口秒数", 60),
     ):
-        raw = env.get(key, "").strip()
-        if not raw:
-            continue
-        try:
-            num = int(raw)
-            if num < minimum:
-                errors.append(f"{label}不能小于 {minimum}")
-        except ValueError:
-            errors.append(f"{label}必须是数字")
+        validate_int(key, label, minimum)
+
+    validate_int("WEB_PORT", "网页端口", 1, 65535)
 
     return errors

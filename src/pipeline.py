@@ -152,7 +152,8 @@ class EmailPipeline:
                             parsed.subject[:80],
                         )
                         self._mark_done(account, uid)
-                    return True
+                        return True
+                    return False
 
                 if not keep:
                     logger.info(
@@ -192,7 +193,8 @@ class EmailPipeline:
                         "已达最大重试次数，跳过该邮件: %s", parsed.subject[:80]
                     )
                     self._mark_done(account, uid)
-                return True
+                    return True
+                return False
 
             try:
                 if self._config.notify_format == "ai":
@@ -217,7 +219,8 @@ class EmailPipeline:
                         parsed.subject[:80],
                     )
                     self._mark_done(account, uid)
-                return True
+                    return True
+                return False
 
             self._clear_attempt(account, uid)
             self._mark_done(account, uid)

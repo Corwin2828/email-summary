@@ -323,7 +323,7 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 | `BUSINESS_QUIET_HOURS_ENABLED` | AEBBS 是否启用夜间静默 | `false` |
 | `BUSINESS_PROCESS_EXISTING_UNREAD` | AEBBS 启动时处理已有未读 | `true` |
 | `BUSINESS_RETRY_FAILED_AFTER_SEC` | AEBBS 处理失败后的重试间隔 | `120` |
-| `BUSINESS_BYPASS_FILTER` | AEBBS 是否绕过过滤，避免漏客户 | `true` |
+| `BUSINESS_BYPASS_FILTER` | AEBBS 是否绕过过滤；默认交给保守 AI 过滤 | `false` |
 | `BUSINESS_FEISHU_WEBHOOK_URL` / `BUSINESS_WECOM_WEBHOOK_URL` | AEBBS 独立通知机器人 | 空 |
 | `BUSINESS_DEEPSEEK_API_KEY` | AEBBS 独立模型 API Key | 空 |
 | `BUSINESS_KNOWLEDGE_DIR` | AEBBS RAG 知识库预留目录 | `./knowledge/aebbs` |

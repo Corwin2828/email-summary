@@ -27,10 +27,26 @@ load_dotenv(ENV_PATH, override=True)
 LOGIN_ATTEMPTS: dict[str, list[float]] = {}
 
 
+def _int_env(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int | None = None,
+) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
 def _login_limited(remote: str) -> bool:
     now = time.time()
-    window_sec = int(os.getenv("WEB_LOGIN_WINDOW_SEC", "600"))
-    max_attempts = int(os.getenv("WEB_LOGIN_MAX_ATTEMPTS", "8"))
+    window_sec = _int_env("WEB_LOGIN_WINDOW_SEC", 600, 60)
+    max_attempts = _int_env("WEB_LOGIN_MAX_ATTEMPTS", 8, 1)
     attempts = [ts for ts in LOGIN_ATTEMPTS.get(remote, []) if now - ts < window_sec]
     LOGIN_ATTEMPTS[remote] = attempts
     return len(attempts) >= max_attempts
@@ -91,8 +107,10 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
     data_dir = resolve_data_dir()
     app.secret_key = os.getenv("WEB_SESSION_SECRET") or load_session_secret(data_dir)
-    app.config["MAX_CONTENT_LENGTH"] = int(
-        os.getenv("WEB_MAX_CONTENT_LENGTH", "1048576")
+    app.config["MAX_CONTENT_LENGTH"] = _int_env(
+        "WEB_MAX_CONTENT_LENGTH",
+        1048576,
+        1024,
     )
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
@@ -182,6 +200,7 @@ def create_app() -> Flask:
         if user is None:
             _record_login_failure(remote)
             return jsonify({"ok": False, "error": "invalid login"}), 401
+        LOGIN_ATTEMPTS.pop(remote, None)
         session.clear()
         session["username"] = user.username
         session["role"] = user.role
@@ -246,7 +265,7 @@ def create_app() -> Flask:
 def main() -> None:
     load_dotenv(ENV_PATH, override=True)
     host = os.getenv("WEB_HOST", "127.0.0.1")
-    port = int(os.getenv("WEB_PORT", "8765"))
+    port = _int_env("WEB_PORT", 8765, 1, 65535)
     app = create_app()
     print(f"配置页面: http://{host}:{port}/")
     print("仅本机访问，关闭请 Ctrl+C")

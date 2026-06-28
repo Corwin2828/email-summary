@@ -229,7 +229,7 @@ def load_config() -> AppConfig:
                 ),
                 bypass_filter=_bool(
                     os.getenv("BUSINESS_BYPASS_FILTER"),
-                    default=True,
+                    default=False,
                 ),
             )
         )

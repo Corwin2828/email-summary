@@ -76,6 +76,13 @@ _CODE_HEAVY_BODY = re.compile(
     re.I,
 )
 
+_CODE_TOKEN_BODY = re.compile(
+    r"(?:验证码|校验码|安全码|安全代码|动态码|一次性密码|"
+    r"verification\s*code|security\s*code|passcode|\bOTP\b|one[- ]time)"
+    r"[^\n]{0,60}?\b[A-Z0-9][A-Z0-9 -]{3,11}\b",
+    re.I,
+)
+
 # 回复/转发引用块起始（引用内验证码不应影响当前邮件）
 _REPLY_SPLIT = re.compile(
     r"(?:^|\n)(?:"
@@ -153,9 +160,12 @@ def classify_email(
                 False, FilterReason.VERIFICATION, "主题含验证码/安全码关键词"
             )
 
-        if _VERIFICATION.search(otp_lower):
+        if _VERIFICATION.search(otp_lower) and (
+            _CODE_HEAVY_BODY.search(body_stripped)
+            or _CODE_TOKEN_BODY.search(body_stripped)
+        ):
             return FilterResult(
-                False, FilterReason.VERIFICATION, "正文含验证码/安全码关键词"
+                False, FilterReason.VERIFICATION, "正文含验证码/安全码"
             )
 
         if len(body_stripped) < 120 and _CODE_HEAVY_BODY.search(body_stripped):
