@@ -311,6 +311,7 @@ class ImapWatcher:
             uids = list(client.search(["UNSEEN"]))
         else:
             uids = self._uids_for_live_poll(client)
+        uids = [u for u in uids if str(u) not in self._submitted_uids]
 
         result = self._fetch_uids(client, uids)
         # 成功拉取（即使本轮没有新邮件）视为连接正常，重置连续失败计数

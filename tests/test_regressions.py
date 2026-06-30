@@ -359,6 +359,52 @@ Can you quote?"""
         self.assertEqual(cleared, [("gmail", "404")])
         self.assertTrue(client.search_called)
 
+    def test_watcher_existing_unread_skips_submitted_uids(self) -> None:
+        account = cfg.AccountConfig(
+            name="aebbs",
+            host="imap.example.com",
+            port=993,
+            address="support@example.com",
+            password="pw",
+            process_existing_unread=True,
+            purpose="business",
+        )
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.fetch_calls: list[list[int]] = []
+
+            def fetch(self, uids, parts):
+                requested = list(uids)
+                self.fetch_calls.append(requested)
+                return {
+                    uid: {b"RFC822": make_raw(subject=f"Unread {uid}")}
+                    for uid in requested
+                }
+
+            def search(self, criteria):
+                return list(range(1, 22))
+
+        client = FakeClient()
+        emitted: list[str] = []
+        watcher = ImapWatcher(
+            account,
+            lambda uid, _raw: emitted.append(uid),
+            data_dir=self.tmp / "data",
+            process_existing_unread=True,
+        )
+        watcher._ensure_client = lambda: client  # type: ignore[method-assign]
+
+        first = watcher.fetch_pending()
+        for uid, raw in first:
+            watcher._emit(uid, raw)
+        second = watcher.fetch_pending()
+
+        self.assertEqual([uid for uid, _raw in first], [str(i) for i in range(1, 21)])
+        self.assertEqual([uid for uid, _raw in second], ["21"])
+        self.assertEqual(client.fetch_calls, [list(range(1, 21)), [21]])
+        self.assertEqual(emitted, [str(i) for i in range(1, 21)])
+
     def test_successful_processing_clears_persisted_failed_retry(self) -> None:
         original_ai = pipeline_mod.DeepSeekClient
         original_send_text = pipeline_mod.send_text
