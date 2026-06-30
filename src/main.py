@@ -7,10 +7,12 @@ import queue
 import sys
 import threading
 import time
+import traceback
 from datetime import datetime, timezone
 
 from src.app_state import save_last_active_at
 from src.config import AppConfig, load_config
+from src.diagnostics import notify_system_issue, notify_system_started
 from src.imap_watcher import ImapWatcher
 from src.notify import send_text
 from src.pipeline import EmailPipeline
@@ -268,6 +270,11 @@ def main() -> None:
         store.close()
         return
 
+    try:
+        notify_system_started(config)
+    except Exception:
+        logger.exception("发送系统启动通知失败")
+
     mail_queue: queue.Queue[tuple[str, str, bytes] | None] = queue.Queue()
     _start_mail_worker(pipeline, mail_queue)
     _start_stall_monitor(config, mail_queue, get_last_activity_at)
@@ -335,5 +342,30 @@ def main() -> None:
         store.close()
 
 
+def _notify_fatal_error(exc: Exception) -> None:
+    try:
+        config = load_config()
+        notify_system_issue(
+            config,
+            "程序异常退出",
+            "\n".join(
+                [
+                    f"错误: {exc}",
+                    "主程序已异常退出，systemd 可能会尝试自动重启。",
+                    traceback.format_exc()[-1200:],
+                ]
+            ),
+        )
+    except Exception:
+        logger.exception("发送致命异常告警失败")
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.exception("程序异常退出")
+        _notify_fatal_error(e)
+        raise

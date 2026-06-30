@@ -88,13 +88,13 @@ def _format_env_value(value: str) -> str:
     return value
 
 
-def read_env_dict() -> dict[str, str]:
+def read_env_dict(reveal_secrets: bool = False) -> dict[str, str]:
     if not ENV_PATH.exists():
         return {k: "" for k in ENV_KEYS}
     values = dotenv_values(ENV_PATH)
     result: dict[str, str] = {}
     for key in ENV_KEYS:
-        if key in SECRET_KEYS:
+        if key in SECRET_KEYS and not reveal_secrets:
             result[key] = ""
         else:
             result[key] = values.get(key) or ""
@@ -158,8 +158,8 @@ def _normalize_env_updates(updates: dict[str, str]) -> dict[str, str]:
     return cleaned
 
 
-def read_all_settings() -> dict:
-    env = read_env_dict()
+def read_all_settings(reveal_secrets: bool = False) -> dict:
+    env = read_env_dict(reveal_secrets=reveal_secrets)
     data_dir = resolve_data_dir(env.get("DATA_DIR") or None)
     prompts = load_prompts(data_dir)
     return {

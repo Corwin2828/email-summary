@@ -10,9 +10,11 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, session
 
 from src.auth_store import WebUser, load_session_secret, list_users, verify_user
-from src.config import ENV_PATH, resolve_data_dir
+from src.config import ENV_PATH, load_config, resolve_data_dir
+from src.diagnostics import run_settings_diagnostics
 from src.rag_store import list_rag_files, read_rag_file, save_rag_file
 from src.settings_store import (
+    ENV_KEYS,
     read_all_settings,
     read_prompt_settings,
     save_all_settings,
@@ -81,6 +83,27 @@ def _safe_user(user: WebUser | None) -> dict | None:
         "can_manage_settings": user.role == "owner",
         "can_manage_rag": user.role in {"owner", "team"},
     }
+
+
+def _changed_settings(before: dict, after: dict) -> list[str]:
+    changed: list[str] = []
+    before_env = before.get("env") or {}
+    after_env = after.get("env") or {}
+    for key in ENV_KEYS:
+        if before_env.get(key, "") != after_env.get(key, ""):
+            changed.append(key)
+
+    before_prompts = before.get("prompts") or {}
+    after_prompts = after.get("prompts") or {}
+    for key in (
+        "summary_system",
+        "filter_system",
+        "business_summary_system",
+        "business_filter_system",
+    ):
+        if before_prompts.get(key, "") != after_prompts.get(key, ""):
+            changed.append(f"prompt:{key}")
+    return changed
 
 
 def require_auth(owner_only: bool = False):
@@ -155,23 +178,52 @@ def create_app() -> Flask:
     @app.get("/api/settings")
     @require_auth(owner_only=True)
     def get_settings() -> object:
-        return jsonify(read_all_settings())
+        return jsonify(read_all_settings(reveal_secrets=True))
 
     @app.post("/api/settings")
     @require_auth(owner_only=True)
     def post_settings() -> object:
+        user = _current_user()
         payload = request.get_json(silent=True) or {}
         errors = validate_settings(payload)
         if errors:
             return jsonify({"ok": False, "errors": errors}), 400
+        before = read_all_settings(reveal_secrets=True)
         try:
             save_all_settings(payload)
-            return jsonify(
-                {
-                    "ok": True,
-                    "message": "已保存。请重启 ./run.sh 使邮件监听生效。",
-                }
-            )
+            after = read_all_settings(reveal_secrets=True)
+            changed = _changed_settings(before, after)
+            try:
+                config = load_config()
+                diagnostics = run_settings_diagnostics(
+                    config,
+                    user.username if user else "owner",
+                    changed,
+                )
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": "已保存，并已完成 Webhook/API 连通性检查。",
+                        "diagnostics": diagnostics,
+                    }
+                )
+            except Exception as e:
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": "已保存，但保存后诊断未完成，请查看下方结果。",
+                        "diagnostics": {
+                            "webhooks": [],
+                            "apis": [
+                                {
+                                    "name": "配置加载",
+                                    "ok": False,
+                                    "detail": str(e)[:240],
+                                }
+                            ],
+                        },
+                    }
+                )
         except OSError as e:
             return jsonify({"ok": False, "errors": [str(e)]}), 500
 

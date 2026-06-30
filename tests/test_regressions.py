@@ -181,6 +181,7 @@ Can you quote?"""
 
     def test_personal_failures_retry_without_marking_processed(self) -> None:
         original_ai = pipeline_mod.DeepSeekClient
+        original_alert = pipeline_mod.notify_system_issue
 
         class FailingAI:
             def __init__(self, config: cfg.AppConfig) -> None:
@@ -191,6 +192,13 @@ Can you quote?"""
 
         pipeline_mod.DeepSeekClient = FailingAI
         self.addCleanup(setattr, pipeline_mod, "DeepSeekClient", original_ai)
+        pipeline_mod.notify_system_issue = lambda *args, **kwargs: []
+        self.addCleanup(
+            setattr,
+            pipeline_mod,
+            "notify_system_issue",
+            original_alert,
+        )
 
         account = cfg.AccountConfig(
             name="gmail",
@@ -297,6 +305,109 @@ Can you quote?"""
             ).status_code,
             200,
         )
+
+    def test_owner_settings_can_reveal_secret_values(self) -> None:
+        settings_store.ENV_PATH = self.tmp / ".env"
+        settings_store.ENV_PATH.write_text(
+            "\n".join(
+                [
+                    "DEEPSEEK_API_KEY=visible-personal-key",
+                    "FEISHU_WEBHOOK_URL=https://example.invalid/personal-hook",
+                    "BUSINESS_DEEPSEEK_API_KEY=visible-business-key",
+                    "BUSINESS_FEISHU_WEBHOOK_URL=https://example.invalid/business-hook",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        masked = settings_store.read_all_settings()
+        revealed = settings_store.read_all_settings(reveal_secrets=True)
+
+        self.assertEqual(masked["env"]["DEEPSEEK_API_KEY"], "")
+        self.assertEqual(masked["env"]["FEISHU_WEBHOOK_URL"], "")
+        self.assertEqual(
+            revealed["env"]["DEEPSEEK_API_KEY"],
+            "visible-personal-key",
+        )
+        self.assertEqual(
+            revealed["env"]["BUSINESS_FEISHU_WEBHOOK_URL"],
+            "https://example.invalid/business-hook",
+        )
+
+    def test_saving_settings_runs_webhook_and_api_diagnostics(self) -> None:
+        settings_store.ENV_PATH = self.tmp / ".env"
+        captured: dict[str, object] = {}
+        original_load_config = web_app.load_config
+        original_diagnostics = web_app.run_settings_diagnostics
+
+        def fake_load_config() -> object:
+            return object()
+
+        def fake_diagnostics(config, username: str, changed_items: list[str]) -> dict:
+            captured["username"] = username
+            captured["changed_items"] = changed_items
+            return {
+                "webhooks": [
+                    {
+                        "purpose": "personal",
+                        "channel": "飞书",
+                        "ok": True,
+                        "detail": "已发送",
+                    }
+                ],
+                "apis": [
+                    {
+                        "name": "个人邮箱 DeepSeek",
+                        "ok": True,
+                        "detail": "API 可用",
+                    }
+                ],
+            }
+
+        web_app.load_config = fake_load_config  # type: ignore[assignment]
+        web_app.run_settings_diagnostics = fake_diagnostics  # type: ignore[assignment]
+        self.addCleanup(setattr, web_app, "load_config", original_load_config)
+        self.addCleanup(
+            setattr,
+            web_app,
+            "run_settings_diagnostics",
+            original_diagnostics,
+        )
+
+        set_user_password("owner", "CorrectHorse123", "owner", self.tmp / "data")
+        app = web_app.create_app()
+        app.testing = True
+        client = app.test_client()
+        login = client.post(
+            "/api/login",
+            json={"username": "owner", "password": "CorrectHorse123"},
+        )
+        csrf = login.get_json()["csrf_token"]
+        payload = {
+            "env": {
+                "DEEPSEEK_API_KEY": "fake",
+                "GMAIL_ENABLED": "true",
+                "GMAIL_ADDRESS": "user@example.com",
+                "GMAIL_APP_PASSWORD": "pw",
+                "FEISHU_WEBHOOK_URL": "https://example.invalid/hook",
+                "POLL_INTERVAL_SEC": "900",
+            },
+            "prompts": {},
+        }
+
+        resp = client.post(
+            "/api/settings",
+            json=payload,
+            headers={"X-CSRF-Token": csrf},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["diagnostics"]["webhooks"][0]["ok"], True)
+        self.assertEqual(captured["username"], "owner")
+        self.assertIn("GMAIL_ADDRESS", captured["changed_items"])
 
     def test_rules_mode_keeps_work_mail_about_verification_flow(self) -> None:
         email = ParsedEmail(

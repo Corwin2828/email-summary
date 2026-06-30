@@ -227,6 +227,44 @@ function fieldLabel(key) {
   return FIELD_LABELS[key] || key.replaceAll("_", " ");
 }
 
+function renderSettingsDiagnostics(diagnostics) {
+  const box = $("#settings-diagnostics");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!diagnostics) {
+    box.hidden = true;
+    return;
+  }
+
+  const groups = [
+    ["Webhook 测试", diagnostics.webhooks || []],
+    ["DeepSeek API 检查", diagnostics.apis || []],
+  ];
+  let hasItems = false;
+  for (const [title, items] of groups) {
+    if (!items.length) continue;
+    hasItems = true;
+    const section = document.createElement("section");
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const list = document.createElement("div");
+    list.className = "diagnostics-list";
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = `diagnostic-row ${item.ok ? "ok" : "error"}`;
+      const name = document.createElement("strong");
+      name.textContent = item.name || `${item.purpose || ""} ${item.channel || ""}`.trim();
+      const detail = document.createElement("span");
+      detail.textContent = item.detail || (item.ok ? "正常" : "失败");
+      row.append(name, detail);
+      list.appendChild(row);
+    }
+    section.append(heading, list);
+    box.appendChild(section);
+  }
+  box.hidden = !hasItems;
+}
+
 function renderSettings(env) {
   const form = $("#settings-form");
   form.innerHTML = "";
@@ -258,7 +296,7 @@ function renderSettings(env) {
         span.textContent = labelText;
         label.append(input, span);
       } else {
-        const type = SECRET_KEYS.has(key) ? "password" : key.includes("PORT") || key.includes("SEC") || key === "MAX_BODY_CHARS" ? "number" : "text";
+        const type = key.includes("PORT") || key.includes("SEC") || key === "MAX_BODY_CHARS" ? "number" : "text";
         const span = document.createElement("span");
         span.textContent = labelText;
         const input = document.createElement("input");
@@ -267,7 +305,7 @@ function renderSettings(env) {
         input.value = env[key] || "";
         input.autocomplete = "off";
         if (SECRET_KEYS.has(key)) {
-          input.placeholder = "留空保存 = 保留服务器原值";
+          input.placeholder = "当前为空；填写后保存为新值";
         }
         label.append(span, input);
       }
@@ -332,11 +370,12 @@ async function savePrompts() {
 }
 
 async function saveSettings() {
-  await api("/api/settings", {
+  const data = await api("/api/settings", {
     method: "POST",
     body: JSON.stringify(collectSettings()),
   });
-  toast("设置已保存。请重启邮件服务后生效。");
+  toast(data.message || "设置已保存。");
+  renderSettingsDiagnostics(data.diagnostics);
   await loadOwnerSettings();
 }
 

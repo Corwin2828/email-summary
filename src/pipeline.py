@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from src.config import AppConfig
 from src.deepseek_client import DeepSeekClient, format_skip_log
+from src.diagnostics import notify_system_issue
 from src.email_parser import parse_raw_email
 from src.filter_rules import classify_email
 from src.notify import send_summary, send_text
@@ -28,6 +29,7 @@ class EmailPipeline:
         self._ai = DeepSeekClient(config)
         self._lock = threading.Lock()
         self._attempts: dict[tuple[str, str], int] = {}
+        self._alerted_failures: set[tuple[str, str, str]] = set()
         self._on_activity = on_activity
 
     def _bump_attempt(self, account: str, uid: str) -> int:
@@ -87,6 +89,40 @@ class EmailPipeline:
             ]
         )
 
+    def _alert_processing_failure(
+        self,
+        account: str,
+        uid: str,
+        parsed,
+        stage: str,
+        attempts: int,
+        exc: Exception,
+    ) -> None:
+        if attempts < MAX_PROCESS_ATTEMPTS:
+            return
+        key = (account, uid, stage)
+        if key in self._alerted_failures:
+            return
+        self._alerted_failures.add(key)
+        author = parsed.original_sender or parsed.sender or "(未知发件人)"
+        subject = parsed.inner_subject or parsed.subject or "(无主题)"
+        detail = "\n".join(
+            [
+                f"阶段: {stage}",
+                f"账户: {account}",
+                f"邮件 UID: {uid}",
+                f"发件人: {author}",
+                f"主题: {subject}",
+                f"连续失败: {attempts} 次",
+                f"错误: {str(exc)[:500]}",
+                "该邮件未标记为已处理，后续会继续重试。",
+            ]
+        )
+        try:
+            notify_system_issue(self._config, "邮件处理连续失败", detail)
+        except Exception:
+            logger.exception("发送邮件处理失败告警失败")
+
     def _finish_business_with_fallback(self, account: str, uid: str, parsed) -> bool:
         try:
             send_text(
@@ -95,9 +131,18 @@ class EmailPipeline:
                 "business",
             )
         except Exception:
+            attempts = self._bump_attempt(account, uid)
             logger.exception(
                 "AEBBS 兜底通知发送失败，保留未完成状态以便重试: %s",
                 parsed.subject[:80],
+            )
+            self._alert_processing_failure(
+                account,
+                uid,
+                parsed,
+                "AEBBS 兜底通知发送",
+                attempts,
+                RuntimeError("AEBBS 兜底通知发送失败"),
             )
             return False
         self._clear_attempt(account, uid)
@@ -134,7 +179,7 @@ class EmailPipeline:
             elif self._config.filter_mode == "ai":
                 try:
                     keep = self._ai.should_keep_ai(parsed, agg)
-                except Exception:
+                except Exception as e:
                     attempts = self._bump_attempt(account, uid)
                     logger.exception(
                         "AI 过滤失败（第 %s 次）: %s",
@@ -150,6 +195,14 @@ class EmailPipeline:
                             "AI 过滤多次失败，继续保留该邮件等待重试: %s",
                             parsed.subject[:80],
                         )
+                    self._alert_processing_failure(
+                        account,
+                        uid,
+                        parsed,
+                        "AI 过滤",
+                        attempts,
+                        e,
+                    )
                     return False
 
                 if not keep:
@@ -173,7 +226,7 @@ class EmailPipeline:
                 else:
                     summary = self._ai.summarize(parsed)
                     message = None
-            except Exception:
+            except Exception as e:
                 attempts = self._bump_attempt(account, uid)
                 logger.exception(
                     "AI 生成失败（第 %s 次）: %s",
@@ -189,6 +242,14 @@ class EmailPipeline:
                         "AI 生成多次失败，继续保留该邮件等待重试: %s",
                         parsed.subject[:80],
                     )
+                self._alert_processing_failure(
+                    account,
+                    uid,
+                    parsed,
+                    "AI 生成通知",
+                    attempts,
+                    e,
+                )
                 return False
 
             try:
@@ -196,7 +257,7 @@ class EmailPipeline:
                     send_text(self._config, message or "", purpose)
                 else:
                     send_summary(self._config, parsed, summary, purpose)  # type: ignore[name-defined]
-            except Exception:
+            except Exception as e:
                 attempts = self._bump_attempt(account, uid)
                 logger.exception(
                     "通知发送失败（第 %s 次）: %s",
@@ -212,6 +273,14 @@ class EmailPipeline:
                         "通知发送多次失败，继续保留该邮件等待重试: %s",
                         parsed.subject[:80],
                     )
+                self._alert_processing_failure(
+                    account,
+                    uid,
+                    parsed,
+                    "Webhook 通知发送",
+                    attempts,
+                    e,
+                )
                 return False
 
             self._clear_attempt(account, uid)

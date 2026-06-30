@@ -158,13 +158,14 @@
           <button type="button" class="button button-primary" id="save-settings-btn">保存设置</button>
         </div>
         <form id="settings-form" class="settings-grid"></form>
+        <div class="settings-diagnostics" id="settings-diagnostics" hidden></div>
         <p class="paths" id="paths"></p>
         <section class="page-guide" aria-label="系统设置填写教程">
           <h3>怎么填</h3>
           <ol>
-            <li>API Key、邮箱密码、Webhook 这些密钥框如果不想改，就保持空白；填了新值才会覆盖服务器原值。</li>
+            <li>API Key、邮箱密码、Webhook 会直接显示当前值；需要替换时直接改成新值。</li>
             <li>端口、秒数、开关按实际需要改。看不懂的运行项建议先保持原样，尤其是 <code>WEB_HOST</code> 和数据目录。</li>
-            <li>保存后需要在服务器重启服务，邮件监听程序才会读取新的邮箱、模型和运行配置。</li>
+            <li>保存后会推送一条飞书/企业微信测试消息，并检查 DeepSeek API；运行配置仍需重启邮件服务才生效，重启成功会再推送启动通知。</li>
           </ol>
         </section>
       </section>
