@@ -12,7 +12,7 @@
   --green: #54d79a;
   --red: #ff6b7a;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-  --radius: 14px;
+  --radius: 8px;
   --font: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -77,7 +77,7 @@ code {
 .login-panel {
   width: min(440px, 100%);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 14px;
   background: rgba(14, 18, 27, 0.86);
   box-shadow: var(--shadow);
   padding: 2rem;
@@ -89,7 +89,7 @@ code {
   height: 56px;
   display: grid;
   place-items: center;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #f5f7fb;
   color: #07090d;
   font-weight: 800;
@@ -113,16 +113,24 @@ p {
   margin-top: 0;
 }
 
-.login-panel h1,
-.topbar h1 {
+.login-panel h1 {
   margin-bottom: 0.55rem;
   font-size: clamp(2rem, 5vw, 3.2rem);
   letter-spacing: -0.06em;
   line-height: 0.95;
 }
 
+.topbar h1 {
+  margin-bottom: 0.3rem;
+  font-size: clamp(1.8rem, 4vw, 2.7rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
 .login-copy,
 .section-head p,
+.settings-section-copy,
 .paths,
 .setup-hint {
   color: var(--muted);
@@ -148,6 +156,7 @@ p {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
 }
 
 input,
@@ -162,7 +171,7 @@ textarea {
 }
 
 input {
-  min-height: 42px;
+  min-height: 38px;
   padding: 0 0.8rem;
 }
 
@@ -180,12 +189,19 @@ textarea:focus {
 }
 
 .button {
-  min-height: 40px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
   border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 0 0.95rem;
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
   cursor: pointer;
   font-weight: 750;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
   color: var(--text);
   transition: transform 0.15s, background 0.15s, border 0.15s;
 }
@@ -210,8 +226,8 @@ textarea:focus {
 }
 
 .button-small {
-  min-height: 32px;
-  padding: 0 0.7rem;
+  min-height: 30px;
+  padding: 0.25rem 0.65rem;
   font-size: 0.8rem;
 }
 
@@ -245,7 +261,7 @@ textarea:focus {
   height: 42px;
   display: grid;
   place-items: center;
-  border-radius: 13px;
+  border-radius: 8px;
   background: #f5f7fb;
   color: #07090d;
   font-weight: 800;
@@ -297,7 +313,6 @@ textarea:focus {
 }
 
 .topbar,
-.section-head,
 .editor-actions,
 .file-pane-head {
   display: flex;
@@ -350,6 +365,10 @@ textarea:focus {
 }
 
 .section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -357,9 +376,14 @@ textarea:focus {
   margin-bottom: 1rem;
 }
 
+.section-head > .button {
+  max-width: 11rem;
+}
+
 .section-head h2 {
   margin-bottom: 0.25rem;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .prompt-grid {
@@ -408,7 +432,7 @@ textarea:focus {
 
 .file-item {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   padding: 0.7rem;
@@ -426,6 +450,7 @@ textarea:focus {
 #rag-meta {
   color: var(--quiet);
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .file-editor {
@@ -440,27 +465,76 @@ textarea:focus {
 }
 
 .settings-section h3 {
-  margin-bottom: 1rem;
-  letter-spacing: -0.02em;
+  margin-bottom: 0.35rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.settings-section-copy {
+  margin-bottom: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .settings-fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .setting-toggle {
-  min-height: 42px;
+  min-height: 40px;
   display: flex;
-  align-items: center;
-  gap: 0.65rem;
+  align-items: flex-start;
+  gap: 0.55rem;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
-  padding: 0 0.75rem;
+  padding: 0.65rem 0.75rem;
   color: var(--muted);
   font-weight: 650;
+  line-height: 1.3;
+}
+
+.setting-toggle input {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: auto;
+  margin-top: 0.1rem;
+}
+
+.setting-toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-guide {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 1rem 1.1rem;
+}
+
+.page-guide h2,
+.page-guide h3 {
+  margin-bottom: 0.55rem;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.page-guide ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+
+.page-guide li + li {
+  margin-top: 0.35rem;
+}
+
+.login-guide {
+  margin-top: 1.1rem;
 }
 
 .paths {
@@ -482,5 +556,14 @@ textarea:focus {
 
   .settings-fields {
     grid-template-columns: 1fr;
+  }
+
+  .section-head {
+    grid-template-columns: 1fr;
+  }
+
+  .section-head > .button {
+    width: 100%;
+    max-width: none;
   }
 }

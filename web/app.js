@@ -27,7 +27,8 @@ const BOOL_KEYS = new Set([
 
 const FIELD_GROUPS = [
   {
-    title: "AEBBS business channel",
+    title: "AEBBS 企业邮箱",
+    description: "这里控制 AEBBS 业务邮箱、AI 模型和企业通知渠道。",
     fields: [
       "BUSINESS_EMAIL_ENABLED",
       "BUSINESS_EMAIL_NAME",
@@ -50,7 +51,8 @@ const FIELD_GROUPS = [
     ],
   },
   {
-    title: "Personal mail",
+    title: "个人邮箱",
+    description: "这里控制个人 Gmail / Outlook、个人 AI 模型和个人通知渠道。",
     fields: [
       "DEEPSEEK_API_KEY",
       "DEEPSEEK_BASE_URL",
@@ -68,7 +70,8 @@ const FIELD_GROUPS = [
     ],
   },
   {
-    title: "Runtime",
+    title: "运行设置",
+    description: "这里控制轮询、数据目录、通知格式和网页后台监听方式。",
     fields: [
       "IMAP_USE_IDLE",
       "POLL_INTERVAL_SEC",
@@ -90,6 +93,70 @@ const FIELD_GROUPS = [
   },
 ];
 
+const FIELD_LABELS = {
+  BUSINESS_EMAIL_ENABLED: "启用 AEBBS 企业邮箱",
+  BUSINESS_EMAIL_NAME: "AEBBS 邮箱显示名",
+  BUSINESS_EMAIL_ADDRESS: "AEBBS 邮箱地址",
+  BUSINESS_EMAIL_IMAP_HOST: "AEBBS IMAP 主机",
+  BUSINESS_EMAIL_IMAP_PORT: "AEBBS IMAP 端口",
+  BUSINESS_EMAIL_PASSWORD: "AEBBS 邮箱密码",
+  BUSINESS_POLL_INTERVAL_SEC: "AEBBS 轮询间隔（秒）",
+  BUSINESS_IMAP_RETRY_WAIT_SEC: "AEBBS IMAP 失败重试（秒）",
+  BUSINESS_RETRY_FAILED_AFTER_SEC: "AEBBS 失败邮件重试等待（秒）",
+  BUSINESS_PROCESS_EXISTING_UNREAD: "处理 AEBBS 现有未读邮件",
+  BUSINESS_BYPASS_FILTER: "AEBBS 跳过 AI 过滤",
+  BUSINESS_QUIET_HOURS_ENABLED: "启用 AEBBS 静默时段",
+  BUSINESS_FEISHU_WEBHOOK_URL: "AEBBS 飞书 Webhook",
+  BUSINESS_WECOM_WEBHOOK_URL: "AEBBS 企业微信 Webhook",
+  BUSINESS_DEEPSEEK_API_KEY: "AEBBS DeepSeek API Key",
+  BUSINESS_DEEPSEEK_BASE_URL: "AEBBS DeepSeek Base URL",
+  BUSINESS_DEEPSEEK_MODEL: "AEBBS DeepSeek 模型",
+  BUSINESS_KNOWLEDGE_DIR: "AEBBS 知识库目录",
+  DEEPSEEK_API_KEY: "个人邮箱 DeepSeek API Key",
+  DEEPSEEK_BASE_URL: "个人邮箱 DeepSeek Base URL",
+  DEEPSEEK_MODEL: "个人邮箱 DeepSeek 模型",
+  GMAIL_ENABLED: "启用 Gmail",
+  GMAIL_ADDRESS: "Gmail 地址",
+  GMAIL_APP_PASSWORD: "Gmail 应用专用密码",
+  OUTLOOK_ENABLED: "启用 Outlook",
+  OUTLOOK_ADDRESS: "Outlook 地址",
+  OUTLOOK_USE_OAUTH: "Outlook 使用 OAuth",
+  AZURE_CLIENT_ID: "Azure Client ID",
+  OUTLOOK_APP_PASSWORD: "Outlook 应用密码",
+  FEISHU_WEBHOOK_URL: "个人飞书 Webhook",
+  WECOM_WEBHOOK_URL: "个人企业微信 Webhook",
+  IMAP_USE_IDLE: "使用 IMAP IDLE",
+  POLL_INTERVAL_SEC: "轮询间隔（秒）",
+  IMAP_OVERQUOTA_WAIT_SEC: "Gmail 限流等待（秒）",
+  HEARTBEAT_ALERT_ENABLED: "启用卡住告警",
+  HEARTBEAT_STALL_SEC: "卡住判定秒数",
+  HEARTBEAT_CHECK_SEC: "心跳检查间隔（秒）",
+  DATA_DIR: "数据目录",
+  MAX_BODY_CHARS: "AI 读取正文上限",
+  FILTER_MODE: "过滤模式",
+  NOTIFY_FORMAT: "通知格式",
+  DAILY_DIGEST_ENABLED: "启用每日汇总",
+  DAILY_DIGEST_TIME: "每日汇总时间",
+  PROCESS_EXISTING_UNREAD: "处理个人邮箱现有未读邮件",
+  CATCHUP_SINCE_LAST_RUN: "下次启动补处理",
+  WEB_HOST: "网页监听地址",
+  WEB_PORT: "网页监听端口",
+};
+
+const ROLE_LABELS = {
+  owner: "管理员",
+  team: "团队账号",
+};
+
+const ERROR_MESSAGES = {
+  unauthorized: "请先登录。",
+  forbidden: "当前账号没有权限操作这一项。",
+  "bad csrf": "登录状态已变化，请刷新页面后重新登录。",
+  "too many attempts": "登录失败次数过多，请等几分钟后再试。",
+  "invalid login": "账号或密码不正确。",
+  "Request failed": "请求失败，请稍后再试。",
+};
+
 let csrfToken = "";
 let currentUser = null;
 let settingsSnapshot = null;
@@ -108,6 +175,10 @@ function toast(message, ok = true) {
   }, 4200);
 }
 
+function translateError(message) {
+  return ERROR_MESSAGES[message] || message;
+}
+
 async function api(path, options = {}) {
   const headers = {
     ...(options.headers || {}),
@@ -121,7 +192,8 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || (data.errors || ["Request failed"]).join("; "));
+    const message = data.error || (data.errors || ["Request failed"]).join("; ");
+    throw new Error(translateError(message));
   }
   return data;
 }
@@ -136,8 +208,8 @@ function showApp(user) {
   currentUser = user;
   $("#login-view").hidden = true;
   $("#app-view").hidden = false;
-  $("#user-label").textContent = `${user.username} · ${user.role}`;
-  $("#role-pill").textContent = user.role;
+  $("#user-label").textContent = `${user.username} · ${ROLE_LABELS[user.role] || user.role}`;
+  $("#role-pill").textContent = ROLE_LABELS[user.role] || user.role;
   document.body.dataset.role = user.role;
   $$(".owner-only").forEach((el) => {
     el.hidden = user.role !== "owner";
@@ -148,11 +220,11 @@ function switchPanel(id) {
   $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === id));
   $$(".nav-item").forEach((btn) => btn.classList.toggle("active", btn.dataset.panel === id));
   const active = document.querySelector(`.nav-item[data-panel="${id}"]`);
-  $("#panel-title").textContent = active ? active.textContent : "Console";
+  $("#panel-title").textContent = active ? active.textContent : "控制台";
 }
 
 function fieldLabel(key) {
-  return key.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  return FIELD_LABELS[key] || key.replaceAll("_", " ");
 }
 
 function renderSettings(env) {
@@ -161,7 +233,15 @@ function renderSettings(env) {
   for (const group of FIELD_GROUPS) {
     const section = document.createElement("section");
     section.className = "settings-section";
-    section.innerHTML = `<h3>${group.title}</h3>`;
+    const title = document.createElement("h3");
+    title.textContent = group.title;
+    section.appendChild(title);
+    if (group.description) {
+      const description = document.createElement("p");
+      description.className = "settings-section-copy";
+      description.textContent = group.description;
+      section.appendChild(description);
+    }
     const grid = document.createElement("div");
     grid.className = "settings-fields";
     for (const key of group.fields) {
@@ -187,7 +267,7 @@ function renderSettings(env) {
         input.value = env[key] || "";
         input.autocomplete = "off";
         if (SECRET_KEYS.has(key)) {
-          input.placeholder = "Leave blank to keep existing value";
+          input.placeholder = "留空保存 = 保留服务器原值";
         }
         label.append(span, input);
       }
@@ -248,7 +328,7 @@ async function savePrompts() {
     method: "POST",
     body: JSON.stringify({ prompts: collectPrompts() }),
   });
-  toast("Prompt saved");
+  toast("提示词已保存");
 }
 
 async function saveSettings() {
@@ -256,7 +336,7 @@ async function saveSettings() {
     method: "POST",
     body: JSON.stringify(collectSettings()),
   });
-  toast("Settings saved. Restart the mail service to apply runtime changes.");
+  toast("设置已保存。请重启邮件服务后生效。");
   await loadOwnerSettings();
 }
 
@@ -264,14 +344,21 @@ function renderRagFiles(files) {
   const list = $("#rag-files");
   list.innerHTML = "";
   if (!files.length) {
-    list.innerHTML = `<p class="empty">No knowledge files yet.</p>`;
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "还没有知识库文件。";
+    list.appendChild(empty);
     return;
   }
   for (const file of files) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "file-item";
-    btn.innerHTML = `<strong>${file.path}</strong><span>${file.size} bytes</span>`;
+    const name = document.createElement("strong");
+    name.textContent = file.path;
+    const size = document.createElement("span");
+    size.textContent = `${file.size} 字节`;
+    btn.append(name, size);
     btn.addEventListener("click", () => loadRagFile(file.path));
     list.appendChild(btn);
   }
@@ -286,13 +373,13 @@ async function loadRagFile(path) {
   const data = await api(`/api/rag/file?path=${encodeURIComponent(path)}`);
   $("#rag-path").value = data.file.path;
   $("#rag-content").value = data.file.content;
-  $("#rag-meta").textContent = `Loaded ${data.file.path}`;
+  $("#rag-meta").textContent = `已载入 ${data.file.path}`;
 }
 
 async function saveRagFile() {
   const path = $("#rag-path").value.trim();
   if (!path) {
-    toast("Please enter a file path", false);
+    toast("请先填写文件路径", false);
     return;
   }
   const data = await api("/api/rag/file", {
@@ -302,8 +389,8 @@ async function saveRagFile() {
       content: $("#rag-content").value,
     }),
   });
-  toast(data.message || "Knowledge file saved");
-  $("#rag-meta").textContent = `Saved ${data.file.path}`;
+  toast(data.message || "知识库文件已保存");
+  $("#rag-meta").textContent = `已保存 ${data.file.path}`;
   await loadRagFiles();
 }
 
@@ -333,7 +420,7 @@ $("#login-form").addEventListener("submit", async (event) => {
     showApp(data.user);
     await Promise.all([loadPrompts(), loadRagFiles(), loadOwnerSettings()]);
   } catch (err) {
-    toast(err.message || "Login failed", false);
+    toast(err.message || "登录失败", false);
   }
 });
 
@@ -354,11 +441,11 @@ $("#refresh-rag-btn").addEventListener("click", () => loadRagFiles().catch((err)
 $("#save-rag-btn").addEventListener("click", () => saveRagFile().catch((err) => toast(err.message, false)));
 $("#new-rag-btn").addEventListener("click", () => {
   $("#rag-path").value = "";
-  $("#rag-content").value = "# New AEBBS knowledge note\n\n";
-  $("#rag-meta").textContent = "New file";
+  $("#rag-content").value = "# 新的 AEBBS 知识条目\n\n";
+  $("#rag-meta").textContent = "新文件";
 });
 
 bootstrap().catch((err) => {
   showLogin(true);
-  toast(err.message || "Unable to load console", false);
+  toast(err.message || "无法载入控制台", false);
 });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AEBBS Mail Ops</title>
+  <title>AEBBS 邮件运营台</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -15,21 +15,29 @@
   <main class="login-shell" id="login-view" hidden>
     <section class="login-panel">
       <div class="mark">AEBBS</div>
-      <p class="eyebrow">Mail Operations Console</p>
-      <h1>Secure tunnel admin</h1>
-      <p class="login-copy">通过 SSH tunnel 访问本页，登录后按角色编辑 Prompt 与 AEBBS 知识库。</p>
+      <p class="eyebrow">邮件运营控制台</p>
+      <h1>安全配置后台</h1>
+      <p class="login-copy">通过 SSH 隧道访问本页，登录后按角色编辑提示词、AEBBS 知识库和系统配置。</p>
       <form id="login-form" class="login-form">
         <label>
-          <span>Username</span>
-          <input type="text" name="username" autocomplete="username" placeholder="owner / team" required />
+          <span>账号</span>
+          <input type="text" name="username" autocomplete="username" placeholder="owner 或 team" required />
         </label>
         <label>
-          <span>Password</span>
+          <span>密码</span>
           <input type="password" name="password" autocomplete="current-password" required />
         </label>
-        <button type="submit" class="button button-primary">Sign in</button>
+        <button type="submit" class="button button-primary">登录</button>
       </form>
       <p class="setup-hint" id="setup-hint" hidden>服务器还没有初始化账号，请先运行 <code>python -m src.auth_store bootstrap</code>。</p>
+      <section class="page-guide login-guide" aria-label="登录填写教程">
+        <h2>怎么填</h2>
+        <ol>
+          <li>账号一般填 <code>owner</code> 或 <code>team</code>。</li>
+          <li>密码是服务器上创建网页账号时设置的密码，不是 SSH 密钥密码。</li>
+          <li>登录失败时先检查大小写和空格；多次失败会短暂限制登录，等几分钟再试。</li>
+        </ol>
+      </section>
     </section>
   </main>
 
@@ -38,28 +46,28 @@
       <div class="rail-brand">
         <div class="rail-logo">A</div>
         <div>
-          <strong>AEBBS Ops</strong>
-          <span id="user-label">Not signed in</span>
+          <strong>AEBBS 运营台</strong>
+          <span id="user-label">未登录</span>
         </div>
       </div>
-      <nav class="rail-nav" aria-label="Console navigation">
-        <button type="button" class="nav-item active" data-panel="panel-prompts">AEBBS Prompt</button>
-        <button type="button" class="nav-item" data-panel="panel-rag">RAG Knowledge</button>
-        <button type="button" class="nav-item owner-only" data-panel="panel-settings">Owner Settings</button>
+      <nav class="rail-nav" aria-label="控制台导航">
+        <button type="button" class="nav-item active" data-panel="panel-prompts">AEBBS 提示词</button>
+        <button type="button" class="nav-item" data-panel="panel-rag">AEBBS 知识库</button>
+        <button type="button" class="nav-item owner-only" data-panel="panel-settings">Owner 系统设置</button>
       </nav>
       <div class="rail-footer">
-        <p>SSH tunnel only</p>
-        <button type="button" class="button button-ghost" id="logout-btn">Log out</button>
+        <p>仅限 SSH 隧道访问</p>
+        <button type="button" class="button button-ghost" id="logout-btn">退出登录</button>
       </div>
     </aside>
 
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">AEBBS inquiry system</p>
-          <h1 id="panel-title">AEBBS Prompt</h1>
+          <p class="eyebrow">AEBBS 询盘系统</p>
+          <h1 id="panel-title">AEBBS 提示词</h1>
         </div>
-        <div class="status-pill" id="role-pill">team</div>
+        <div class="status-pill" id="role-pill">团队账号</div>
       </header>
 
       <div id="toast" class="toast" hidden></div>
@@ -67,74 +75,98 @@
       <section class="panel active" id="panel-prompts">
         <div class="section-head">
           <div>
-            <h2>Customer inquiry prompts</h2>
-            <p>团队账号只能编辑 AEBBS 询盘 Prompt；不会看到私人邮箱配置。</p>
+            <h2>客户询盘提示词</h2>
+            <p>团队账号只能编辑 AEBBS 询盘提示词；不会看到私人邮箱配置。</p>
           </div>
-          <button type="button" class="button button-primary" id="save-prompts-btn">Save prompts</button>
+          <button type="button" class="button button-primary" id="save-prompts-btn">保存提示词</button>
         </div>
         <div class="prompt-grid">
           <label class="editor-card">
-            <span>AEBBS summary prompt</span>
+            <span>AEBBS 邮件总结提示词</span>
             <textarea id="business-summary" spellcheck="false"></textarea>
           </label>
           <label class="editor-card">
-            <span>AEBBS filter prompt</span>
+            <span>AEBBS 邮件过滤提示词</span>
             <textarea id="business-filter" spellcheck="false"></textarea>
           </label>
           <label class="editor-card owner-only">
-            <span>Personal summary prompt</span>
+            <span>个人邮箱总结提示词</span>
             <textarea id="summary-system" spellcheck="false"></textarea>
           </label>
           <label class="editor-card owner-only">
-            <span>Personal filter prompt</span>
+            <span>个人邮箱过滤提示词</span>
             <textarea id="filter-system" spellcheck="false"></textarea>
           </label>
         </div>
+        <section class="page-guide" aria-label="提示词填写教程">
+          <h3>怎么填</h3>
+          <ol>
+            <li>“总结提示词”决定 AI 怎么整理邮件内容，例如提取客户、车型、产品需求和下一步动作。</li>
+            <li>“过滤提示词”决定哪些邮件需要通知；AEBBS 企业邮箱建议写得保守一点，不确定就保留并通知。</li>
+            <li>修改后点击“保存提示词”。提示词会立即用于后续新邮件，已处理邮件不会自动重跑。</li>
+          </ol>
+        </section>
       </section>
 
       <section class="panel" id="panel-rag">
         <div class="section-head">
           <div>
-            <h2>AEBBS knowledge files</h2>
+            <h2>AEBBS 知识库文件</h2>
             <p>只允许编辑 <code>knowledge/aebbs</code> 内的 <code>.md</code> / <code>.txt</code> 文件，保存前会自动备份。</p>
           </div>
-          <button type="button" class="button button-secondary" id="refresh-rag-btn">Refresh</button>
+          <button type="button" class="button button-secondary" id="refresh-rag-btn">刷新列表</button>
         </div>
         <div class="rag-layout">
           <aside class="file-pane">
             <div class="file-pane-head">
-              <strong>Files</strong>
-              <button type="button" class="button button-ghost button-small" id="new-rag-btn">New</button>
+              <strong>文件列表</strong>
+              <button type="button" class="button button-ghost button-small" id="new-rag-btn">新建</button>
             </div>
             <div class="file-list" id="rag-files"></div>
           </aside>
           <section class="file-editor">
             <label class="field">
-              <span>Path</span>
+              <span>文件路径</span>
               <input type="text" id="rag-path" placeholder="products/welcome-lights.md" />
             </label>
             <label class="editor-card editor-card-large">
-              <span>Content</span>
+              <span>文件内容</span>
               <textarea id="rag-content" spellcheck="false"></textarea>
             </label>
             <div class="editor-actions">
               <span id="rag-meta"></span>
-              <button type="button" class="button button-primary" id="save-rag-btn">Save file</button>
+              <button type="button" class="button button-primary" id="save-rag-btn">保存文件</button>
             </div>
           </section>
         </div>
+        <section class="page-guide" aria-label="知识库填写教程">
+          <h3>怎么填</h3>
+          <ol>
+            <li>左边点已有文件可以编辑；点“新建”后先填写文件路径，例如 <code>products/welcome-lights.md</code>。</li>
+            <li>文件内容用普通中文写清楚即可：产品名称、适配车型、卖点、价格口径、不能承诺的内容都可以写。</li>
+            <li>保存后系统会自动备份旧文件；如果写错了，先别乱删文件，可以用备份恢复。</li>
+          </ol>
+        </section>
       </section>
 
       <section class="panel owner-only" id="panel-settings">
         <div class="section-head">
           <div>
-            <h2>Owner-only settings</h2>
+            <h2>Owner 系统设置</h2>
             <p>完整邮箱、模型、Webhook 与运行配置。密钥字段不会回显，留空保存不会覆盖旧值。</p>
           </div>
-          <button type="button" class="button button-primary" id="save-settings-btn">Save settings</button>
+          <button type="button" class="button button-primary" id="save-settings-btn">保存设置</button>
         </div>
         <form id="settings-form" class="settings-grid"></form>
         <p class="paths" id="paths"></p>
+        <section class="page-guide" aria-label="系统设置填写教程">
+          <h3>怎么填</h3>
+          <ol>
+            <li>API Key、邮箱密码、Webhook 这些密钥框如果不想改，就保持空白；填了新值才会覆盖服务器原值。</li>
+            <li>端口、秒数、开关按实际需要改。看不懂的运行项建议先保持原样，尤其是 <code>WEB_HOST</code> 和数据目录。</li>
+            <li>保存后需要在服务器重启服务，邮件监听程序才会读取新的邮箱、模型和运行配置。</li>
+          </ol>
+        </section>
       </section>
     </section>
   </div>
