@@ -40,8 +40,15 @@ class EmailPipeline:
     def _clear_attempt(self, account: str, uid: str) -> None:
         self._attempts.pop((account, uid), None)
 
+    def mark_failed_for_retry(self, account: str, uid: str) -> None:
+        self._store.mark_failed(account, uid)
+
+    def _mark_failed(self, account: str, uid: str) -> None:
+        self._store.mark_failed(account, uid)
+
     def _mark_done(self, account: str, uid: str) -> None:
         self._store.mark(account, uid)
+        self._store.clear_failed(account, uid)
         if self._on_activity:
             self._on_activity(account)
 
@@ -144,6 +151,7 @@ class EmailPipeline:
                 attempts,
                 RuntimeError("AEBBS 兜底通知发送失败"),
             )
+            self._mark_failed(account, uid)
             return False
         self._clear_attempt(account, uid)
         self._mark_done(account, uid)
@@ -157,6 +165,7 @@ class EmailPipeline:
     def handle_raw(self, account: str, uid: str, raw: bytes) -> bool:
         with self._lock:
             if self._store.seen(account, uid):
+                self._store.clear_failed(account, uid)
                 return True
 
             agg = self._aggregator_address(account)
@@ -203,6 +212,7 @@ class EmailPipeline:
                         attempts,
                         e,
                     )
+                    self._mark_failed(account, uid)
                     return False
 
                 if not keep:
@@ -250,6 +260,7 @@ class EmailPipeline:
                     attempts,
                     e,
                 )
+                self._mark_failed(account, uid)
                 return False
 
             try:
@@ -281,6 +292,7 @@ class EmailPipeline:
                     attempts,
                     e,
                 )
+                self._mark_failed(account, uid)
                 return False
 
             self._clear_attempt(account, uid)

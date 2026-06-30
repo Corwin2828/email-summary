@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import json
+import queue
 import tempfile
+import time
 import unittest
 from email.message import EmailMessage
 from pathlib import Path
@@ -12,12 +14,14 @@ import dotenv
 dotenv.load_dotenv = lambda *args, **kwargs: False
 
 from src import config as cfg
+from src import main as main_mod
 from src import pipeline as pipeline_mod
 from src import settings_store, web_app
 from src.auth_store import set_user_password
 from src.deepseek_client import DeepSeekClient
 from src.email_parser import ParsedEmail, parse_raw_email
 from src.filter_rules import classify_email
+from src.imap_watcher import ImapWatcher
 from src.prompts import BUSINESS_FILTER_GUARDRAILS, DEFAULT_BUSINESS_FILTER
 from src.storage import ProcessedStore
 
@@ -243,6 +247,277 @@ Can you quote?"""
         for _ in range(5):
             self.assertFalse(pipe.handle_raw("gmail", "10", raw))
             self.assertFalse(store.seen("gmail", "10"))
+            self.assertEqual(store.pending_failed("gmail"), ["10"])
+
+    def test_mail_worker_requeues_unhandled_pipeline_exception(self) -> None:
+        class FlakyPipeline:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.failed: list[tuple[str, str]] = []
+
+            def handle_raw(self, account: str, uid: str, raw: bytes) -> bool:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("unexpected worker failure")
+                return True
+
+            def mark_failed_for_retry(self, account: str, uid: str) -> None:
+                self.failed.append((account, uid))
+
+            def retry_delay_for(self, account: str) -> float:
+                return 0.01
+
+        pipeline = FlakyPipeline()
+        mail_queue: queue.Queue[tuple[str, str, bytes] | None] = queue.Queue()
+        worker = main_mod._start_mail_worker(pipeline, mail_queue)  # type: ignore[arg-type]
+        mail_queue.put(("gmail", "99", make_raw()))
+
+        deadline = time.time() + 2
+        while time.time() < deadline and pipeline.calls < 2:
+            time.sleep(0.01)
+
+        mail_queue.put(None)
+        mail_queue.join()
+        worker.join(timeout=1)
+
+        self.assertEqual(pipeline.calls, 2)
+        self.assertEqual(pipeline.failed, [("gmail", "99")])
+        self.assertFalse(worker.is_alive())
+
+    def test_watcher_prioritizes_persisted_failed_retry_uids(self) -> None:
+        raw = make_raw(subject="Retry me")
+        account = cfg.AccountConfig(
+            name="gmail",
+            host="imap.example.com",
+            port=993,
+            address="collector@example.com",
+            password="pw",
+        )
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.search_called = False
+
+            def fetch(self, uids, parts):
+                return {42: {b"RFC822": raw}}
+
+            def search(self, criteria):
+                self.search_called = True
+                return []
+
+        client = FakeClient()
+        cleared: list[tuple[str, str]] = []
+        watcher = ImapWatcher(
+            account,
+            lambda _uid, _raw: None,
+            data_dir=self.tmp / "data",
+            retry_uids_provider=lambda account_name: ["42"],
+            retry_uid_clearer=lambda account_name, uid: cleared.append(
+                (account_name, uid)
+            ),
+        )
+        watcher._ensure_client = lambda: client  # type: ignore[method-assign]
+
+        self.assertEqual(watcher.fetch_pending(), [("42", raw)])
+        self.assertFalse(client.search_called)
+        self.assertEqual(cleared, [])
+
+    def test_watcher_clears_missing_failed_retry_uid_and_continues(self) -> None:
+        account = cfg.AccountConfig(
+            name="gmail",
+            host="imap.example.com",
+            port=993,
+            address="collector@example.com",
+            password="pw",
+        )
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.search_called = False
+
+            def fetch(self, uids, parts):
+                return {}
+
+            def search(self, criteria):
+                self.search_called = True
+                return []
+
+        client = FakeClient()
+        cleared: list[tuple[str, str]] = []
+        watcher = ImapWatcher(
+            account,
+            lambda _uid, _raw: None,
+            data_dir=self.tmp / "data",
+            retry_uids_provider=lambda account_name: ["404"],
+            retry_uid_clearer=lambda account_name, uid: cleared.append(
+                (account_name, uid)
+            ),
+        )
+        watcher._ensure_client = lambda: client  # type: ignore[method-assign]
+
+        self.assertEqual(watcher.fetch_pending(), [])
+        self.assertEqual(cleared, [("gmail", "404")])
+        self.assertTrue(client.search_called)
+
+    def test_successful_processing_clears_persisted_failed_retry(self) -> None:
+        original_ai = pipeline_mod.DeepSeekClient
+        original_send_text = pipeline_mod.send_text
+
+        class PassingAI:
+            def __init__(self, config: cfg.AppConfig) -> None:
+                self.config = config
+
+            def should_keep_ai(self, parsed, aggregator_address):
+                return True
+
+            def compose_notification(self, parsed, aggregator_address):
+                return "ok"
+
+        pipeline_mod.DeepSeekClient = PassingAI
+        pipeline_mod.send_text = lambda *args, **kwargs: None
+        self.addCleanup(setattr, pipeline_mod, "DeepSeekClient", original_ai)
+        self.addCleanup(setattr, pipeline_mod, "send_text", original_send_text)
+
+        account = cfg.AccountConfig(
+            name="gmail",
+            host="imap.example.com",
+            port=993,
+            address="collector@example.com",
+            password="pw",
+        )
+        app_config = cfg.AppConfig(
+            deepseek_api_key="fake",
+            deepseek_base_url="https://example.invalid",
+            deepseek_model="deepseek-chat",
+            business_deepseek_api_key="",
+            business_deepseek_base_url="https://example.invalid",
+            business_deepseek_model="deepseek-chat",
+            accounts=[account],
+            feishu_webhook="https://example.invalid/hook",
+            wecom_webhook=None,
+            business_feishu_webhook=None,
+            business_wecom_webhook=None,
+            poll_interval_sec=900,
+            data_dir=self.tmp / "pipeline-success",
+            max_body_chars=1000,
+            filter_mode="ai",
+            notify_format="ai",
+            daily_digest_enabled=False,
+            daily_digest_time="21:30",
+            process_existing_unread=False,
+            catchup_since_last_run=True,
+            imap_use_idle=False,
+            imap_overquota_wait_sec=10800,
+            heartbeat_alert_enabled=True,
+            heartbeat_stall_sec=7200,
+            heartbeat_check_sec=300,
+            forward_source_map={},
+        )
+        store = ProcessedStore(self.tmp / "processed-success.db")
+        self.addCleanup(store.close)
+        store.mark_failed("gmail", "11")
+        pipe = pipeline_mod.EmailPipeline(app_config, store)
+
+        self.assertTrue(pipe.handle_raw("gmail", "11", make_raw()))
+        self.assertTrue(store.seen("gmail", "11"))
+        self.assertEqual(store.pending_failed("gmail"), [])
+
+    def test_poll_once_uses_persisted_failed_retry_store(self) -> None:
+        raw = make_raw(subject="Manual retry")
+        account = cfg.AccountConfig(
+            name="gmail",
+            host="imap.example.com",
+            port=993,
+            address="collector@example.com",
+            password="pw",
+        )
+        app_config = cfg.AppConfig(
+            deepseek_api_key="fake",
+            deepseek_base_url="https://example.invalid",
+            deepseek_model="deepseek-chat",
+            business_deepseek_api_key="",
+            business_deepseek_base_url="https://example.invalid",
+            business_deepseek_model="deepseek-chat",
+            accounts=[account],
+            feishu_webhook="https://example.invalid/hook",
+            wecom_webhook=None,
+            business_feishu_webhook=None,
+            business_wecom_webhook=None,
+            poll_interval_sec=900,
+            data_dir=self.tmp / "poll-once",
+            max_body_chars=1000,
+            filter_mode="ai",
+            notify_format="ai",
+            daily_digest_enabled=False,
+            daily_digest_time="21:30",
+            process_existing_unread=False,
+            catchup_since_last_run=True,
+            imap_use_idle=False,
+            imap_overquota_wait_sec=10800,
+            heartbeat_alert_enabled=True,
+            heartbeat_stall_sec=7200,
+            heartbeat_check_sec=300,
+            forward_source_map={},
+        )
+        store = ProcessedStore(self.tmp / "processed-poll-once.db")
+        self.addCleanup(store.close)
+        store.mark_failed("gmail", "77")
+
+        class FakePipeline:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, bytes]] = []
+                self.marked: list[tuple[str, str]] = []
+                self.mark_attempts = 0
+
+            def mark_failed_for_retry(self, account_name: str, uid: str) -> None:
+                self.mark_attempts += 1
+                if self.mark_attempts == 1:
+                    raise RuntimeError("temporary db failure")
+                self.marked.append((account_name, uid))
+                store.mark_failed(account_name, uid)
+
+            def handle_raw(self, account_name: str, uid: str, raw_bytes: bytes) -> bool:
+                self.calls.append((account_name, uid, raw_bytes))
+                store.mark(account_name, uid)
+                store.clear_failed(account_name, uid)
+                return True
+
+        class FakeWatcher:
+            def __init__(
+                self,
+                _account,
+                _on_message,
+                *,
+                retry_uids_provider=None,
+                retry_uid_clearer=None,
+                **_kwargs,
+            ) -> None:
+                self.retry_uids_provider = retry_uids_provider
+                self.retry_uid_clearer = retry_uid_clearer
+                self.closed = False
+
+            def fetch_pending(self):
+                if self.retry_uids_provider is None:
+                    return []
+                if "77" in self.retry_uids_provider("gmail"):
+                    return [("77", raw)]
+                return []
+
+            def close(self) -> None:
+                self.closed = True
+
+        original_watcher = main_mod.ImapWatcher
+        main_mod.ImapWatcher = FakeWatcher  # type: ignore[assignment]
+        self.addCleanup(setattr, main_mod, "ImapWatcher", original_watcher)
+
+        fake_pipeline = FakePipeline()
+        main_mod._poll_once(app_config, fake_pipeline, store)  # type: ignore[arg-type]
+
+        self.assertEqual(fake_pipeline.calls, [("gmail", "77", raw)])
+        self.assertEqual(fake_pipeline.mark_attempts, 1)
+        self.assertEqual(fake_pipeline.marked, [])
+        self.assertTrue(store.seen("gmail", "77"))
+        self.assertEqual(store.pending_failed("gmail"), [])
 
     def test_web_numeric_validation_and_login_attempt_reset(self) -> None:
         settings_store.ENV_PATH = self.tmp / ".env"

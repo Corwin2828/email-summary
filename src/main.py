@@ -57,6 +57,21 @@ def _start_mail_worker(
                     retry_later(item, delay_sec)
             except Exception:
                 logger.exception("处理邮件失败")
+                if item is not None:
+                    try:
+                        account, uid, _raw = item
+                        if hasattr(pipeline, "mark_failed_for_retry"):
+                            pipeline.mark_failed_for_retry(account, uid)
+                        delay_sec = pipeline.retry_delay_for(account)
+                        logger.warning(
+                            "%s/%s 处理线程异常，将在 %ss 后重试",
+                            account,
+                            uid,
+                            delay_sec,
+                        )
+                        retry_later(item, delay_sec)
+                    except Exception:
+                        logger.exception("安排失败邮件重试失败")
             finally:
                 mail_queue.task_done()
 
@@ -150,6 +165,7 @@ def _start_stall_monitor(
 def _poll_once(
     config: AppConfig,
     pipeline: EmailPipeline,
+    store: ProcessedStore,
     account_filter: str | None = None,
 ) -> None:
     """手动执行一轮轮询并退出（用于后台人工触发）。"""
@@ -172,6 +188,8 @@ def _poll_once(
             overquota_wait_sec=account.overquota_wait_sec
             or config.imap_overquota_wait_sec,
             quiet_hours_enabled=account.quiet_hours_enabled,
+            retry_uids_provider=store.pending_failed,
+            retry_uid_clearer=store.clear_failed,
         )
         try:
             batch = watcher.fetch_pending()
@@ -182,8 +200,29 @@ def _poll_once(
                     len(batch),
                 )
             for uid, raw in batch:
-                pipeline.handle_raw(account.name, uid, raw)
-                total += 1
+                try:
+                    pipeline.mark_failed_for_retry(account.name, uid)
+                except Exception:
+                    logger.exception(
+                        "[手动轮询] 记录待重试邮件失败，继续处理邮件"
+                    )
+                try:
+                    done = pipeline.handle_raw(account.name, uid, raw)
+                except Exception:
+                    try:
+                        pipeline.mark_failed_for_retry(account.name, uid)
+                    except Exception:
+                        logger.exception("[手动轮询] 记录失败重试状态失败")
+                    logger.exception("[手动轮询] %s/%s 处理失败", account.name, uid)
+                    continue
+                if done:
+                    total += 1
+                else:
+                    logger.warning(
+                        "[手动轮询] %s/%s 本次未完成，已保留待重试状态",
+                        account.name,
+                        uid,
+                    )
         except Exception:
             logger.exception("[手动轮询] %s 失败", account.name)
         finally:
@@ -266,7 +305,7 @@ def main() -> None:
             )
 
     if args.poll_once:
-        _poll_once(config, pipeline, args.account)
+        _poll_once(config, pipeline, store, args.account)
         store.close()
         return
 
@@ -283,6 +322,10 @@ def main() -> None:
 
         def make_handler(acc_name: str):
             def handler(uid: str, raw: bytes) -> None:
+                try:
+                    pipeline.mark_failed_for_retry(acc_name, uid)
+                except Exception:
+                    logger.exception("记录待重试邮件失败，继续加入处理队列")
                 mail_queue.put((acc_name, uid, raw))
 
             return handler
@@ -301,6 +344,8 @@ def main() -> None:
             overquota_wait_sec=account.overquota_wait_sec
             or config.imap_overquota_wait_sec,
             quiet_hours_enabled=account.quiet_hours_enabled,
+            retry_uids_provider=store.pending_failed,
+            retry_uid_clearer=store.clear_failed,
         )
         watcher.set_error_callback(
             _make_imap_error_handler(

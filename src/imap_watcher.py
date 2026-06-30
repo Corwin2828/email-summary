@@ -56,6 +56,8 @@ class ImapWatcher:
         use_idle: bool = False,
         overquota_wait_sec: int = 10800,
         quiet_hours_enabled: bool = True,
+        retry_uids_provider: Callable[[str], list[str]] | None = None,
+        retry_uid_clearer: Callable[[str, str], None] | None = None,
     ) -> None:
         self._account = account
         self._on_message = on_message
@@ -66,6 +68,8 @@ class ImapWatcher:
         self._use_idle = use_idle
         self._overquota_wait_sec = max(60, overquota_wait_sec)
         self._quiet_hours_enabled = quiet_hours_enabled
+        self._retry_uids_provider = retry_uids_provider
+        self._retry_uid_clearer = retry_uid_clearer
         self._runtime_baseline: set[str] | None = None
         self._catchup_done = False
         self._submitted_uids: set[str] = set()
@@ -195,6 +199,56 @@ class ImapWatcher:
         baseline = self._runtime_baseline or set()
         return [u for u in unseen if str(u) not in baseline]
 
+    def _uids_for_failed_retry(self) -> list[int]:
+        if self._retry_uids_provider is None:
+            return []
+        uids: list[int] = []
+        for uid in self._retry_uids_provider(self._account.name):
+            if uid in self._submitted_uids:
+                continue
+            try:
+                uids.append(int(uid))
+            except ValueError:
+                logger.warning("%s 忽略非法待重试 UID: %s", self._account.name, uid)
+        return uids
+
+    def _clear_missing_failed_retry(
+        self,
+        attempted_uids: list[int],
+        fetched: list[tuple[str, bytes]],
+    ) -> None:
+        if self._retry_uid_clearer is None:
+            return
+        fetched_uids = {uid for uid, _raw in fetched}
+        for uid in attempted_uids:
+            if str(uid) in fetched_uids:
+                continue
+            logger.warning(
+                "%s 待重试 UID %s 已无法读取，移出待重试列表",
+                self._account.name,
+                uid,
+            )
+            self._retry_uid_clearer(self._account.name, str(uid))
+
+    def _fetch_failed_retry_pending(
+        self, client: IMAPClient
+    ) -> list[tuple[str, bytes]]:
+        retry_uids = self._uids_for_failed_retry()
+        if not retry_uids:
+            return []
+
+        attempted_uids = retry_uids[:MAX_FETCH_PER_POLL]
+        result = self._fetch_uids(client, attempted_uids)
+        self._consecutive_failures = 0
+        self._clear_missing_failed_retry(attempted_uids, result)
+        if result:
+            logger.info(
+                "%s 发现 %d 封待重试失败邮件",
+                self._account.name,
+                len(result),
+            )
+        return result
+
     def _run_startup_catchup(self, client: IMAPClient) -> None:
         if self._catchup_done or not self._catchup_since_last_run:
             self._catchup_done = True
@@ -244,6 +298,10 @@ class ImapWatcher:
 
     def fetch_pending(self) -> list[tuple[str, bytes]]:
         client = self._ensure_client()
+
+        retry_result = self._fetch_failed_retry_pending(client)
+        if retry_result:
+            return retry_result
 
         if not self._catchup_done:
             self._run_startup_catchup(client)
@@ -353,6 +411,12 @@ class ImapWatcher:
                 while True:
                     try:
                         client = self._ensure_client()
+                        retry_batch = self._fetch_failed_retry_pending(client)
+                        if retry_batch:
+                            for uid, raw in retry_batch:
+                                self._emit(uid, raw)
+                            continue
+
                         if not self._catchup_done:
                             self._run_startup_catchup(client)
                             self._establish_runtime_baseline(client)
