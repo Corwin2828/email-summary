@@ -179,7 +179,7 @@ Can you quote?"""
         self.assertIn("OLD BUSINESS PROMPT", captured["system"])
         self.assertIn(BUSINESS_FILTER_GUARDRAILS, captured["system"])
 
-    def test_personal_failures_request_retry_until_max_attempts(self) -> None:
+    def test_personal_failures_retry_without_marking_processed(self) -> None:
         original_ai = pipeline_mod.DeepSeekClient
 
         class FailingAI:
@@ -232,12 +232,9 @@ Can you quote?"""
         pipe = pipeline_mod.EmailPipeline(app_config, store)
         raw = make_raw(subject="Need follow-up", body="Please review.")
 
-        self.assertFalse(pipe.handle_raw("gmail", "10", raw))
-        self.assertFalse(store.seen("gmail", "10"))
-        self.assertFalse(pipe.handle_raw("gmail", "10", raw))
-        self.assertFalse(store.seen("gmail", "10"))
-        self.assertTrue(pipe.handle_raw("gmail", "10", raw))
-        self.assertTrue(store.seen("gmail", "10"))
+        for _ in range(5):
+            self.assertFalse(pipe.handle_raw("gmail", "10", raw))
+            self.assertFalse(store.seen("gmail", "10"))
 
     def test_web_numeric_validation_and_login_attempt_reset(self) -> None:
         settings_store.ENV_PATH = self.tmp / ".env"

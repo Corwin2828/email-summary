@@ -137,9 +137,8 @@ class EmailPipeline:
                 except Exception:
                     attempts = self._bump_attempt(account, uid)
                     logger.exception(
-                        "AI 过滤失败 (%s/%s): %s",
+                        "AI 过滤失败（第 %s 次）: %s",
                         attempts,
-                        MAX_PROCESS_ATTEMPTS,
                         parsed.subject[:80],
                     )
                     if purpose == "business":
@@ -147,12 +146,10 @@ class EmailPipeline:
                             account, uid, parsed
                         )
                     if attempts >= MAX_PROCESS_ATTEMPTS:
-                        logger.error(
-                            "AI 过滤多次失败，跳过该邮件: %s",
+                        logger.warning(
+                            "AI 过滤多次失败，继续保留该邮件等待重试: %s",
                             parsed.subject[:80],
                         )
-                        self._mark_done(account, uid)
-                        return True
                     return False
 
                 if not keep:
@@ -179,9 +176,8 @@ class EmailPipeline:
             except Exception:
                 attempts = self._bump_attempt(account, uid)
                 logger.exception(
-                    "AI 生成失败 (%s/%s): %s",
+                    "AI 生成失败（第 %s 次）: %s",
                     attempts,
-                    MAX_PROCESS_ATTEMPTS,
                     parsed.subject[:80],
                 )
                 if purpose == "business":
@@ -189,11 +185,10 @@ class EmailPipeline:
                         account, uid, parsed
                     )
                 if attempts >= MAX_PROCESS_ATTEMPTS:
-                    logger.error(
-                        "已达最大重试次数，跳过该邮件: %s", parsed.subject[:80]
+                    logger.warning(
+                        "AI 生成多次失败，继续保留该邮件等待重试: %s",
+                        parsed.subject[:80],
                     )
-                    self._mark_done(account, uid)
-                    return True
                 return False
 
             try:
@@ -204,9 +199,8 @@ class EmailPipeline:
             except Exception:
                 attempts = self._bump_attempt(account, uid)
                 logger.exception(
-                    "通知发送失败 (%s/%s): %s",
+                    "通知发送失败（第 %s 次）: %s",
                     attempts,
-                    MAX_PROCESS_ATTEMPTS,
                     parsed.subject[:80],
                 )
                 if purpose == "business":
@@ -214,12 +208,10 @@ class EmailPipeline:
                         account, uid, parsed
                     )
                 if attempts >= MAX_PROCESS_ATTEMPTS:
-                    logger.error(
-                        "通知发送多次失败，跳过该邮件: %s",
+                    logger.warning(
+                        "通知发送多次失败，继续保留该邮件等待重试: %s",
                         parsed.subject[:80],
                     )
-                    self._mark_done(account, uid)
-                    return True
                 return False
 
             self._clear_attempt(account, uid)
