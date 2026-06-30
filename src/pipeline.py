@@ -100,7 +100,7 @@ class EmailPipeline:
     ) -> None:
         if attempts < MAX_PROCESS_ATTEMPTS:
             return
-        key = (account, uid, stage)
+        key = (account, stage, str(exc)[:160])
         if key in self._alerted_failures:
             return
         self._alerted_failures.add(key)
