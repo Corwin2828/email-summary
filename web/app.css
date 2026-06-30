@@ -34,7 +34,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -160,7 +161,8 @@ p {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -170,9 +172,25 @@ textarea {
   transition: border 0.16s, background 0.16s;
 }
 
-input {
+input,
+select {
   min-height: 38px;
   padding: 0 0.8rem;
+}
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1rem) 50%,
+    calc(100% - 0.72rem) 50%;
+  background-size:
+    0.32rem 0.32rem,
+    0.32rem 0.32rem;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 
 textarea {
@@ -183,7 +201,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: rgba(118, 167, 255, 0.8);
   background: rgba(255, 255, 255, 0.08);
 }
@@ -477,9 +496,22 @@ textarea:focus {
 
 .settings-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.85rem 1rem;
   align-items: start;
+}
+
+.settings-fields .field,
+.settings-fields .setting-toggle {
+  grid-column: span 4;
+}
+
+.settings-fields .field-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-fields .field-select {
+  max-width: 420px;
 }
 
 .setting-toggle {
@@ -610,6 +642,12 @@ textarea:focus {
 
   .settings-fields {
     grid-template-columns: 1fr;
+  }
+
+  .settings-fields .field,
+  .settings-fields .setting-toggle,
+  .settings-fields .field-wide {
+    grid-column: 1 / -1;
   }
 
   .section-head {

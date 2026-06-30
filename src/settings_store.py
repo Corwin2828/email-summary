@@ -249,8 +249,17 @@ def validate_settings(payload: dict) -> list[str]:
         if maximum is not None and num > maximum:
             errors.append(f"{label}不能大于 {maximum}")
 
+    def validate_choice(key: str, label: str, allowed: set[str]) -> None:
+        raw = env.get(key, "").strip()
+        if raw and raw not in allowed:
+            options = "、".join(sorted(allowed))
+            errors.append(f"{label}必须选择: {options}")
+
     if not env.get("DEEPSEEK_API_KEY"):
         errors.append("DeepSeek API Key 不能为空")
+
+    validate_choice("FILTER_MODE", "过滤模式", {"ai", "rules"})
+    validate_choice("NOTIFY_FORMAT", "通知格式", {"ai", "template"})
 
     gmail_on = env.get("GMAIL_ENABLED", "").lower() in ("1", "true", "yes")
     outlook_on = env.get("OUTLOOK_ENABLED", "").lower() in (

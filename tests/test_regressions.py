@@ -533,6 +533,8 @@ Can you quote?"""
                 "WEB_MAX_CONTENT_LENGTH": "bad-bytes",
                 "WEB_LOGIN_MAX_ATTEMPTS": "bad-attempts",
                 "WEB_LOGIN_WINDOW_SEC": "bad-window",
+                "FILTER_MODE": "maybe",
+                "NOTIFY_FORMAT": "plain",
             }
         }
 
@@ -542,6 +544,8 @@ Can you quote?"""
         self.assertIn("网页请求体大小限制必须是数字", errors)
         self.assertIn("登录失败次数限制必须是数字", errors)
         self.assertIn("登录失败统计窗口秒数必须是数字", errors)
+        self.assertIn("过滤模式必须选择: ai、rules", errors)
+        self.assertIn("通知格式必须选择: ai、template", errors)
 
         os.environ["WEB_MAX_CONTENT_LENGTH"] = "bad-bytes"
         os.environ["WEB_LOGIN_MAX_ATTEMPTS"] = "2"

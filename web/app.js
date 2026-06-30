@@ -178,6 +178,34 @@ const FIELD_PLACEHOLDERS = {
   BUSINESS_RETRY_FAILED_AFTER_SEC: "120",
 };
 
+const FIELD_OPTIONS = {
+  FILTER_MODE: [
+    ["ai", "AI 判断是否推送"],
+    ["rules", "本地规则过滤"],
+  ],
+  NOTIFY_FORMAT: [
+    ["ai", "AI 生成完整通知"],
+    ["template", "本地模板通知"],
+  ],
+};
+
+const WIDE_FIELD_KEYS = new Set([
+  "DEEPSEEK_API_KEY",
+  "BUSINESS_DEEPSEEK_API_KEY",
+  "DEEPSEEK_BASE_URL",
+  "BUSINESS_DEEPSEEK_BASE_URL",
+  "GMAIL_APP_PASSWORD",
+  "OUTLOOK_APP_PASSWORD",
+  "AZURE_CLIENT_ID",
+  "BUSINESS_EMAIL_PASSWORD",
+  "FEISHU_WEBHOOK_URL",
+  "WECOM_WEBHOOK_URL",
+  "BUSINESS_FEISHU_WEBHOOK_URL",
+  "BUSINESS_WECOM_WEBHOOK_URL",
+  "BUSINESS_KNOWLEDGE_DIR",
+  "DATA_DIR",
+]);
+
 const ROLE_LABELS = {
   owner: "管理员",
   team: "团队账号",
@@ -319,7 +347,10 @@ function renderSettings(env) {
     grid.className = "settings-fields";
     for (const key of group.fields) {
       const label = document.createElement("label");
+      const isSelect = Boolean(FIELD_OPTIONS[key]);
       label.className = BOOL_KEYS.has(key) ? "setting-toggle" : "field";
+      if (isSelect) label.classList.add("field-select");
+      if (WIDE_FIELD_KEYS.has(key)) label.classList.add("field-wide");
       label.dataset.key = key;
       const labelText = fieldLabel(key);
       if (BOOL_KEYS.has(key)) {
@@ -330,6 +361,27 @@ function renderSettings(env) {
         const span = document.createElement("span");
         span.textContent = labelText;
         label.append(input, span);
+      } else if (isSelect) {
+        const span = document.createElement("span");
+        span.textContent = labelText;
+        const select = document.createElement("select");
+        select.name = key;
+        const current = env[key] || "";
+        for (const [value, text] of FIELD_OPTIONS[key]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = text;
+          option.selected = current === value;
+          select.appendChild(option);
+        }
+        if (current && !FIELD_OPTIONS[key].some(([value]) => value === current)) {
+          const option = document.createElement("option");
+          option.value = current;
+          option.textContent = `当前值：${current}`;
+          option.selected = true;
+          select.appendChild(option);
+        }
+        label.append(span, select);
       } else {
         const type = key.includes("PORT") || key.includes("SEC") || key === "MAX_BODY_CHARS" ? "number" : "text";
         const span = document.createElement("span");
