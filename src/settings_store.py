@@ -314,7 +314,7 @@ def validate_settings(payload: dict) -> list[str]:
             validate_int(key, label, minimum)
 
     try:
-        poll = int(env.get("POLL_INTERVAL_SEC") or "1800")
+        poll = int(env.get("POLL_INTERVAL_SEC") or "3600")
         if poll < 900:
             errors.append("轮询间隔建议不少于 900 秒（15 分钟）")
     except ValueError:

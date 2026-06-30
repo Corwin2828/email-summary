@@ -27,8 +27,8 @@ const BOOL_KEYS = new Set([
 
 const FIELD_GROUPS = [
   {
-    title: "AEBBS 企业邮箱",
-    description: "这里控制 AEBBS 业务邮箱、AI 模型和企业通知渠道。",
+    title: "AEBBS 企业邮箱账号",
+    description: "这里控制 AEBBS 业务邮箱登录和独立通知渠道。",
     fields: [
       "BUSINESS_EMAIL_ENABLED",
       "BUSINESS_EMAIL_NAME",
@@ -36,27 +36,36 @@ const FIELD_GROUPS = [
       "BUSINESS_EMAIL_IMAP_HOST",
       "BUSINESS_EMAIL_IMAP_PORT",
       "BUSINESS_EMAIL_PASSWORD",
+      "BUSINESS_FEISHU_WEBHOOK_URL",
+      "BUSINESS_WECOM_WEBHOOK_URL",
+      "BUSINESS_KNOWLEDGE_DIR",
+    ],
+  },
+  {
+    title: "AEBBS AI 模型",
+    description: "客户询盘要求快速响应；基础设置用 Flash，靠保守过滤提示词防漏。",
+    fields: [
+      "BUSINESS_DEEPSEEK_API_KEY",
+      "BUSINESS_DEEPSEEK_BASE_URL",
+      "BUSINESS_DEEPSEEK_MODEL",
+    ],
+  },
+  {
+    title: "AEBBS 运行设置",
+    description: "企业邮箱按更快频率监听；这些设置只影响 AEBBS，不影响个人邮箱。",
+    fields: [
       "BUSINESS_POLL_INTERVAL_SEC",
       "BUSINESS_IMAP_RETRY_WAIT_SEC",
       "BUSINESS_RETRY_FAILED_AFTER_SEC",
       "BUSINESS_PROCESS_EXISTING_UNREAD",
       "BUSINESS_BYPASS_FILTER",
       "BUSINESS_QUIET_HOURS_ENABLED",
-      "BUSINESS_FEISHU_WEBHOOK_URL",
-      "BUSINESS_WECOM_WEBHOOK_URL",
-      "BUSINESS_DEEPSEEK_API_KEY",
-      "BUSINESS_DEEPSEEK_BASE_URL",
-      "BUSINESS_DEEPSEEK_MODEL",
-      "BUSINESS_KNOWLEDGE_DIR",
     ],
   },
   {
-    title: "个人邮箱",
-    description: "这里控制个人 Gmail / Outlook、个人 AI 模型和个人通知渠道。",
+    title: "个人邮箱账号",
+    description: "这里控制个人 Gmail / Outlook 登录和个人通知渠道。",
     fields: [
-      "DEEPSEEK_API_KEY",
-      "DEEPSEEK_BASE_URL",
-      "DEEPSEEK_MODEL",
       "GMAIL_ENABLED",
       "GMAIL_ADDRESS",
       "GMAIL_APP_PASSWORD",
@@ -70,12 +79,29 @@ const FIELD_GROUPS = [
     ],
   },
   {
-    title: "运行设置",
-    description: "这里控制轮询、数据目录、通知格式和网页后台监听方式。",
+    title: "个人邮箱 AI 模型",
+    description: "个人邮件优先省钱和稳定，默认使用 DeepSeek Flash。",
+    fields: [
+      "DEEPSEEK_API_KEY",
+      "DEEPSEEK_BASE_URL",
+      "DEEPSEEK_MODEL",
+    ],
+  },
+  {
+    title: "个人邮箱运行设置",
+    description: "这些设置只影响个人 Gmail / Outlook；建议一小时轮询一次。",
     fields: [
       "IMAP_USE_IDLE",
       "POLL_INTERVAL_SEC",
       "IMAP_OVERQUOTA_WAIT_SEC",
+      "PROCESS_EXISTING_UNREAD",
+      "CATCHUP_SINCE_LAST_RUN",
+    ],
+  },
+  {
+    title: "系统与网页后台",
+    description: "这里控制程序告警、AI 输入长度、通知格式和网页后台监听方式。",
+    fields: [
       "HEARTBEAT_ALERT_ENABLED",
       "HEARTBEAT_STALL_SEC",
       "HEARTBEAT_CHECK_SEC",
@@ -85,8 +111,6 @@ const FIELD_GROUPS = [
       "NOTIFY_FORMAT",
       "DAILY_DIGEST_ENABLED",
       "DAILY_DIGEST_TIME",
-      "PROCESS_EXISTING_UNREAD",
-      "CATCHUP_SINCE_LAST_RUN",
       "WEB_HOST",
       "WEB_PORT",
     ],
@@ -100,7 +124,7 @@ const FIELD_LABELS = {
   BUSINESS_EMAIL_IMAP_HOST: "AEBBS IMAP 主机",
   BUSINESS_EMAIL_IMAP_PORT: "AEBBS IMAP 端口",
   BUSINESS_EMAIL_PASSWORD: "AEBBS 邮箱密码",
-  BUSINESS_POLL_INTERVAL_SEC: "AEBBS 轮询间隔（秒）",
+  BUSINESS_POLL_INTERVAL_SEC: "AEBBS 轮询间隔（秒，建议 60）",
   BUSINESS_IMAP_RETRY_WAIT_SEC: "AEBBS IMAP 失败重试（秒）",
   BUSINESS_RETRY_FAILED_AFTER_SEC: "AEBBS 失败邮件重试等待（秒）",
   BUSINESS_PROCESS_EXISTING_UNREAD: "处理 AEBBS 现有未读邮件",
@@ -126,7 +150,7 @@ const FIELD_LABELS = {
   FEISHU_WEBHOOK_URL: "个人飞书 Webhook",
   WECOM_WEBHOOK_URL: "个人企业微信 Webhook",
   IMAP_USE_IDLE: "使用 IMAP IDLE",
-  POLL_INTERVAL_SEC: "轮询间隔（秒）",
+  POLL_INTERVAL_SEC: "个人邮箱轮询间隔（秒，建议 3600）",
   IMAP_OVERQUOTA_WAIT_SEC: "Gmail 限流等待（秒）",
   HEARTBEAT_ALERT_ENABLED: "启用卡住告警",
   HEARTBEAT_STALL_SEC: "卡住判定秒数",
@@ -141,6 +165,17 @@ const FIELD_LABELS = {
   CATCHUP_SINCE_LAST_RUN: "下次启动补处理",
   WEB_HOST: "网页监听地址",
   WEB_PORT: "网页监听端口",
+};
+
+const FIELD_PLACEHOLDERS = {
+  DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+  BUSINESS_DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+  DEEPSEEK_MODEL: "deepseek-v4-flash",
+  BUSINESS_DEEPSEEK_MODEL: "deepseek-v4-flash",
+  POLL_INTERVAL_SEC: "3600",
+  BUSINESS_POLL_INTERVAL_SEC: "60",
+  BUSINESS_IMAP_RETRY_WAIT_SEC: "300",
+  BUSINESS_RETRY_FAILED_AFTER_SEC: "120",
 };
 
 const ROLE_LABELS = {
@@ -305,7 +340,9 @@ function renderSettings(env) {
         input.value = env[key] || "";
         input.autocomplete = "off";
         if (SECRET_KEYS.has(key)) {
-          input.placeholder = "当前为空；填写后保存为新值";
+          input.placeholder = FIELD_PLACEHOLDERS[key] || "当前为空；填写后保存为新值";
+        } else if (FIELD_PLACEHOLDERS[key]) {
+          input.placeholder = FIELD_PLACEHOLDERS[key];
         }
         label.append(span, input);
       }

@@ -260,9 +260,9 @@ def load_config() -> AppConfig:
             raise ValueError("企业邮箱已启用：请填写 BUSINESS_DEEPSEEK_API_KEY")
 
     try:
-        poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "1800"))
+        poll_interval = int(os.getenv("POLL_INTERVAL_SEC", "3600"))
     except ValueError:
-        poll_interval = 1800
+        poll_interval = 3600
     poll_interval = max(900, poll_interval)
 
     try:
@@ -294,7 +294,7 @@ def load_config() -> AppConfig:
         deepseek_base_url=os.getenv(
             "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
         ).strip(),
-        deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip(),
+        deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash").strip(),
         business_deepseek_api_key=os.getenv(
             "BUSINESS_DEEPSEEK_API_KEY", ""
         ).strip(),
@@ -303,8 +303,7 @@ def load_config() -> AppConfig:
             os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         ).strip(),
         business_deepseek_model=os.getenv(
-            "BUSINESS_DEEPSEEK_MODEL",
-            os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            "BUSINESS_DEEPSEEK_MODEL", "deepseek-v4-flash"
         ).strip(),
         accounts=accounts,
         feishu_webhook=feishu,

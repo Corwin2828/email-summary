@@ -96,7 +96,7 @@ python -m src.main --poll-once
 ```env
 DEEPSEEK_API_KEY=sk-xxxxxxxx
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 > 邮件正文会发送到 DeepSeek 接口处理，请勿将 Key 提交到 GitHub。
@@ -167,7 +167,7 @@ BUSINESS_IMAP_RETRY_WAIT_SEC=300
 BUSINESS_QUIET_HOURS_ENABLED=false
 BUSINESS_PROCESS_EXISTING_UNREAD=true
 BUSINESS_RETRY_FAILED_AFTER_SEC=120
-BUSINESS_BYPASS_FILTER=true
+BUSINESS_BYPASS_FILTER=false
 ```
 
 AEBBS 独立机器人和模型：
@@ -177,15 +177,15 @@ BUSINESS_FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的A
 BUSINESS_WECOM_WEBHOOK_URL=
 BUSINESS_DEEPSEEK_API_KEY=sk-你的AEBBS专用Key
 BUSINESS_DEEPSEEK_BASE_URL=https://api.deepseek.com
-BUSINESS_DEEPSEEK_MODEL=deepseek-chat
+BUSINESS_DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 企业邮箱与 Gmail 的差别：
 
-- Gmail 对频繁 IMAP 轮询更敏感，旧版默认个人邮箱至少 15 分钟。
+- Gmail 对频繁 IMAP 轮询更敏感，建议个人邮箱 1 小时轮询一次。
 - SiteGround 企业邮箱一般可以承受 60 秒级新邮件检查，但仍不是官方“无限轮询”接口，所以程序保留 `BUSINESS_IMAP_RETRY_WAIT_SEC` 退避重试。
 - 客户询盘默认关闭夜间静默，晚上也持续监听。
-- AEBBS 默认处理已有未读、绕过过滤；AI 总结失败时会先推送原始邮件摘要兜底；通知失败时不会标记已处理，并会自动重试。
+- AEBBS 默认处理已有未读，并交给更保守的 AI 过滤；AI 总结失败时会先推送原始邮件摘要兜底；通知失败时不会标记已处理，并会自动重试。
 - AEBBS Prompt 会翻译客户邮件、总结需求，并生成中文与英文建议回复。
 
 后续知识库预留：
@@ -312,7 +312,7 @@ Token 保存在 `data/outlook_msal_cache.json`（已在 `.gitignore` 中忽略�
 | `CATCHUP_SINCE_LAST_RUN` | 启动时补发上次退出后的邮件 | `true` |
 | `PROCESS_EXISTING_UNREAD` | 启动时处理全部未读（慎用） | `false` |
 | `IMAP_USE_IDLE` | IMAP IDLE（易断线，不推荐） | `false` |
-| `POLL_INTERVAL_SEC` | 检查新邮件间隔（秒，`1800`=30 分钟） | `1800` |
+| `POLL_INTERVAL_SEC` | 个人邮箱检查新邮件间隔（秒，`3600`=1 小时） | `3600` |
 | `IMAP_OVERQUOTA_WAIT_SEC` | Gmail `OVERQUOTA` 限流后等待再重试（秒） | `10800`（3 小时） |
 | `BUSINESS_EMAIL_ENABLED` | 启用 AEBBS 企业邮箱监听 | `false` |
 | `BUSINESS_EMAIL_NAME` | 企业邮箱账户名，用于状态与日志隔离 | `aebbs-support` |
